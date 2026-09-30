@@ -157,6 +157,23 @@ form.add input,form.add select{border:1px solid var(--rule);background:var(--pap
 .card.topic h3{font-size:18px}
 .more-src summary{cursor:pointer;font-size:13px;color:var(--ai);padding-top:8px}
 .more-src .sources{margin-top:6px}
+
+.lead{margin:6px 0 0;font-size:15.5px;line-height:1.75;overflow-wrap:anywhere}
+.kp{margin:10px 0 0;padding-left:1.25em;display:grid;gap:6px}
+.kp li{font-size:14.5px;line-height:1.7;overflow-wrap:anywhere}
+.kp li::marker{color:var(--ai)}
+.why{margin:10px 0 0;font-size:14px;line-height:1.7;color:var(--ink);background:var(--ai-soft);border-radius:6px;padding:8px 10px}
+.lbl2{font-size:11px;letter-spacing:.06em;color:var(--ai);margin-right:6px;white-space:nowrap}
+.terms{margin:10px 0 0;display:grid;gap:4px;font-size:13px;color:var(--muted)}
+.terms div{display:flex;gap:8px;flex-wrap:wrap}
+.terms dt{color:var(--ink);font-weight:500}
+.terms dd{margin:0;min-width:0}
+.srcs{flex:1 1 100%;order:2}
+.srcs summary{cursor:pointer;font-size:13px;color:var(--ai)}
+.srcs ul{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:6px}
+.srcs li a{display:block;font-size:13px;line-height:1.55;color:var(--ink);text-decoration:none;overflow-wrap:anywhere}
+.srcs li.read a{opacity:.6}
+.s-src{display:block;font-size:11px;color:var(--muted)}
 </style>
 
 <style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)} body{margin:0} [hidden]{display:none!important} img{max-width:100%}</style>
@@ -216,7 +233,7 @@ form.add input,form.add select{border:1px solid var(--rule);background:var(--pap
     </section>
   </main>
 </div>
-<p class="build">BUILD_TAG 2026-09-30b</p>
+<p class="build">BUILD_TAG 2026-09-30c</p>
 <script>
 document.documentElement.lang = "ja";
 const CATS = ["新モデル・研究","ツール・新機能","活用ノウハウ","SEO・検索・Web","開発・自動化","ビジネス・企業動向","規制・安全・社会"];
@@ -263,36 +280,30 @@ function card(t, opts = {}){
   const one = items[0] || {};
   const saved = !!S.saved[t.id];
   const allRead = items.length && items.every(i => read.has(i.id));
-  const head = multi
-    ? `<span class="tag">${esc(t.category || "")}</span>${t.importance >= 3 ? `<span class="tag imp">重要</span>` : ""}<span class="count">出典 ${items.length}件</span>${opts.withDate && t.date ? `<span class="time">${esc(dlabel(t.date).md)}</span>` : ""}`
-    : `<span class="src">${esc(one.src_name)}</span>${kindTag(one)}${t.category ? `<span class="tag">${esc(t.category)}</span>` : ""}${t.importance >= 3 ? `<span class="tag imp">重要</span>` : ""}<span class="time">${opts.withDate && t.date ? esc(dlabel(t.date).md) + " " : ""}${esc(hm(one.published))}</span>`;
-  const title = multi ? esc(t.title) : `<a href="${esc(one.url)}" target="_blank" rel="noopener" data-open="${esc(one.id)}">${esc(t.title || one.title_ja || one.title)}</a>`;
-  const orig = !multi && one.title_ja && one.title && one.title_ja !== one.title ? `<p class="orig">${esc(one.title)}</p>` : "";
-  const summary = multi ? t.summary : (t.summary || one.summary);
-  const srcLi = i => `
-      <li class="${read.has(i.id) ? "read" : ""}">
-        <div class="s-meta"><span class="src">${esc(i.src_name)}</span>${kindTag(i)}<span class="time">${esc(hm(i.published))}</span>${i.via && i.via !== "Claude" ? `<span class="via">要約：${esc(i.via)}</span>` : ""}</div>
-        <a class="s-title" href="${esc(i.url)}" target="_blank" rel="noopener" data-open="${esc(i.id)}">${esc(i.title_ja || i.title)} ↗</a>
-        ${i.summary ? `<p class="s-sum">${esc(i.summary)}</p>` : ""}${pointsHtml(i)}
-      </li>`;
-  const sources = multi ? `<ul class="sources">${items.slice(0, 3).map(srcLi).join("")}</ul>` +
-      (items.length > 3 ? `<details class="more-src"><summary>ほかの出典 ${items.length - 3}件</summary><ul class="sources">${items.slice(3).map(srcLi).join("")}</ul></details>` : "")
-    : pointsHtml(one);
-  const tip = t.biz && t.biz_tip ? `<p class="tip"><span class="lbl">業務メモ</span>${esc(t.biz_tip)}</p>` : "";
+  const lead = t.lead || t.summary || one.summary || "";
+  const points = (t.points && t.points.length) ? t.points : (!t.lead && !multi ? (one.points || []) : []);
+  const kinds = [...new Set(items.map(i => i.kind === "video" ? "動画" : region(i.src_type)))];
+  const head = `${t.category ? `<span class="tag">${esc(t.category)}</span>` : ""}${t.importance >= 3 ? `<span class="tag imp">重要</span>` : ""}` +
+    `<span class="count">${multi ? `${items.length}件の情報をまとめ` : esc(one.src_name)}</span>` +
+    `<span class="time">${opts.withDate && t.date ? esc(dlabel(t.date).md) + " " : ""}${esc(kinds.join("・"))}</span>`;
+  const terms = (t.terms || []).filter(x => x && x[0]);
+  const srcList = items.map(i => `<li class="${read.has(i.id) ? "read" : ""}"><a href="${esc(i.url)}" target="_blank" rel="noopener" data-open="${esc(i.id)}"><span class="s-src">${esc(i.src_name)}${i.kind === "video" ? "（動画）" : ""}</span>${esc(i.title_ja || i.title)} ↗</a></li>`).join("");
   return `<article class="card${multi ? " topic" : ""}${allRead ? " read" : ""}" data-id="${esc(t.id)}">
     <div class="meta">${head}</div>
-    <h3>${title}</h3>${orig}
-    ${summary ? `<p class="sum">${esc(summary)}</p>` : ""}
-    ${tip}${sources}
+    <h3>${esc(t.title || one.title_ja || one.title)}</h3>
+    ${lead ? `<p class="lead">${esc(lead)}</p>` : ""}
+    ${points.length ? `<ul class="kp">${points.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+    ${t.why ? `<p class="why"><span class="lbl2">なぜ大事？</span>${esc(t.why)}</p>` : ""}
+    ${terms.length ? `<dl class="terms">${terms.map(x => `<div><dt>${esc(x[0])}</dt><dd>${esc(x[1])}</dd></div>`).join("")}</dl>` : ""}
+    ${t.biz && t.biz_tip ? `<p class="tip"><span class="lbl">業務メモ</span>${esc(t.biz_tip)}</p>` : ""}
     <div class="actions">
-      ${multi ? "" : `<a class="btn" href="${esc(one.url)}" target="_blank" rel="noopener" data-open="${esc(one.id)}">${one.kind === "video" ? "YouTubeで見る" : "記事を開く"} ↗</a>`}
+      <details class="srcs"><summary>出典 ${items.length}件</summary><ul>${srcList}</ul></details>
       <button class="btn${saved?" on":""}" data-save="${esc(t.id)}" aria-pressed="${saved}">${saved ? "★ 保存済み" : "☆ 保存"}</button>
-      ${!multi && one.via ? `<span class="via">要約：${esc(one.via)}</span>` : ""}
     </div>
   </article>`;
 }
 function matchKind(i){ return S.kind === "all" || (S.kind === "video" ? i.kind === "video" : S.kind === "jp" ? i.kind === "news" && region(i.src_type) === "国内" : i.kind === "news" && region(i.src_type) === "海外"); }
-function topicText(t){ return [t.title, t.summary, t.biz_tip, ...t.items.flatMap(i => [i.title, i.title_ja, i.summary, i.src_name, ...(i.points||[])])].join(" ").toLowerCase(); }
+function topicText(t){ return [t.title, t.summary, t.lead, t.why, ...(t.points||[]), t.biz_tip, ...t.items.flatMap(i => [i.title, i.title_ja, i.summary, i.src_name, ...(i.points||[])])].join(" ").toLowerCase(); }
 function filtered(){
   const q = S.q.trim().toLowerCase();
   return S.topics.filter(t => t.items.some(matchKind) && (S.cat === "all" || t.category === S.cat) && (!q || topicText(t).includes(q)));
@@ -346,7 +357,7 @@ function renderSources(){
 }
 
 /* ---------- データ ---------- */
-const BUILD_TAG = "2026-09-30b";
+const BUILD_TAG = "2026-09-30c";
 async function getJSON(path){
   const r = await fetch(path + (path.includes("?") ? "&" : "?") + "t=" + Date.now(), { cache: "no-store" });
   if (!r.ok) throw new Error(r.status);
@@ -364,7 +375,7 @@ document.addEventListener("click", e => {
   if (t.dataset.date) { selectDate(t.dataset.date); return; }
   if (t.dataset.kind) { S.kind = t.dataset.kind; renderPaper(); return; }
   if (t.dataset.cat) { S.cat = t.dataset.cat; renderPaper(); return; }
-  if (t.dataset.open) { markRead(t.dataset.open); const c = t.closest(".sources li") || t.closest(".card"); if (c) c.classList.add("read"); return; }
+  if (t.dataset.open) { markRead(t.dataset.open); const c = t.closest(".srcs li"); if (c) c.classList.add("read"); return; }
   if (t.dataset.save) toggleSave(t.dataset.save);
 });
 let qTimer; $("q").addEventListener("input", e => { clearTimeout(qTimer); qTimer = setTimeout(() => { S.q = e.target.value; renderPaper(); }, 150); });

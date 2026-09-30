@@ -1,4 +1,4 @@
-# AIトレンド朝刊 紙面組み立て ver2.1 (2026-09-30) — 同じ話題の記事をトピックにまとめる
+# AIトレンド朝刊 紙面組み立て ver2.2 (2026-09-30) — 同じ話題の記事をまとめ、元記事を読まなくて済む解説を付ける
 # 収集結果＋要約を、リポジトリの data/ に書き込む（issues・index・seen・status）。
 # 使い方:
 #   python3 tools/build_issue.py --out <collectorの出力dir> --enrich enrich_news.json --vsum vsum.json \
@@ -6,9 +6,9 @@
 # enrich_news.json: {"<news.jsonの添字>": {"t":日本語タイトル(英語記事のみ),"s":要約,"c":カテゴリ記号,"b":業務メモ(なければ省略),"i":重要度1-3}}
 #   載せない記事はキーを省略する
 # vsum.json: {"<video_id>": {"title_ja","summary","points":[],"biz_tip","category","importance","via"}}
-# topics.json: [{"t":トピック見出し,"s":複数の出典をまとめた要約,"c":カテゴリ記号,"i":重要度,"b":業務メモ(任意),
-#                "news":[news.jsonの添字...],"videos":["video_id"...]}]
-#   2件以上の出典がある話題だけ書けばよい。どのトピックにも入らない記事は1件だけのトピックになる。
+# topics.json: [{"t":見出し,"lead":ひとことで(1〜2文),"points":[要点...],"why":なぜ大事か,"terms":[["用語","説明"]...],
+#                "c":カテゴリ記号,"i":重要度,"b":業務メモ(任意),"news":[news.jsonの添字...],"videos":["video_id"...]}]
+#   どのトピックにも入らない記事は、その記事の要約だけの1件の話題になる。
 import argparse, json, os
 from datetime import datetime, timezone, timedelta
 
@@ -85,6 +85,8 @@ def main():
             continue
         used.update(ids)
         topics.append({"id": f"t{a.date.replace('-', '')}{n:02d}", "title": t.get("t", ""), "summary": t.get("s", ""),
+                       "lead": t.get("lead") or t.get("s", ""), "points": t.get("points", []), "why": t.get("why", ""),
+                       "terms": t.get("terms", []),
                        "category": CAT.get(t.get("c"), t.get("c")), "importance": t.get("i", 2),
                        "biz": bool(t.get("b")), "biz_tip": t.get("b", ""), "item_ids": ids})
 
@@ -105,6 +107,8 @@ def main():
         if it["id"] in used:
             continue
         topics.append({"id": "s" + it["id"], "title": it.get("title_ja") or it["title"], "summary": "",
+                       "lead": it.get("summary", ""), "points": it.get("points", []) if it.get("kind") == "video" else [],
+                       "why": "", "terms": [],
                        "category": it.get("category"), "importance": it.get("importance", 2),
                        "biz": bool(it.get("biz")), "biz_tip": it.get("biz_tip", ""), "item_ids": [it["id"]]})
     save(issue_path, {"date": a.date, "updatedAt": now, "items": items, "topics": topics})
