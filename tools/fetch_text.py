@@ -1,4 +1,4 @@
-# AIトレンド朝刊 本文取得 ver1.0 (2026-09-30)
+# AIトレンド朝刊 本文取得 ver1.1 (2026-10-01) 文字コード自動判別
 # 話題ごとに、出典記事の本文を取ってきて1つのテキストにまとめる（Claudeが読んで解説を書くための材料）。
 # 使い方A（毎朝の収集）: python3 tools/fetch_text.py --groups W/groups.json --collected W/out --vsum W/vsum.json --out W/txt
 #   groups.json: [{"key":"T01","t":"話題の見出し","news":[news.jsonの添字...],"videos":["video_id"...],"i":重要度}]
@@ -19,7 +19,15 @@ def fetch(url):
         with urllib.request.urlopen(req, timeout=25) as r:
             raw = r.read()
         import trafilatura
-        txt = trafilatura.extract(raw.decode("utf-8", "ignore"), include_comments=False, include_tables=False,
+        enc = None
+        m = re.search(rb'charset=["\']?([A-Za-z0-9_\-]+)', raw[:3000])
+        if m:
+            enc = m.group(1).decode().lower()
+        try:
+            html = raw.decode(enc or "utf-8")
+        except Exception:
+            html = raw.decode("utf-8", "ignore")
+        txt = trafilatura.extract(html, include_comments=False, include_tables=False,
                                   favor_precision=True) or ""
         junk = re.compile(r"クリップ機能|いいね|再度読みたく|サインインした状態|More From|編集部です|関連記事|この連載の一覧|Articles in This Series|"
                           r"おすすめ|Picks for You|今日の必読|Today.s Picks|Special$|^PR$|講座|早割|Copyright|Subscribe|ニュースレター|有料会員")
