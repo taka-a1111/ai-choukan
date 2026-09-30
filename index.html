@@ -143,6 +143,20 @@ form.add input,form.add select{border:1px solid var(--rule);background:var(--pap
 .state{font-size:12px;color:var(--ai);white-space:nowrap}
 .state.off{color:var(--muted)}
 .build{margin-top:28px;font-family:var(--f-data);font-size:11px;color:var(--muted);text-align:center}
+
+.count{font-size:11px;color:var(--ai);border:1px solid var(--ai);border-radius:4px;padding:0 6px;line-height:1.6}
+.sources{list-style:none;margin:12px 0 0;padding:0;display:grid;gap:0;border-top:1px solid var(--rule)}
+.sources li{padding:10px 0;border-bottom:1px solid var(--rule);min-width:0}
+.sources li:last-child{border-bottom:0;padding-bottom:0}
+.sources li.read{opacity:.62}
+.s-meta{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;font-size:12px;color:var(--muted)}
+.s-meta .src{color:var(--ink);font-weight:500}
+.s-meta .via{margin-left:auto}
+.s-title{display:block;margin-top:3px;font-size:14px;line-height:1.55;color:var(--ai);text-decoration:none;overflow-wrap:anywhere}
+.s-sum{margin:3px 0 0;font-size:14px;line-height:1.65;color:var(--ink);overflow-wrap:anywhere}
+.card.topic h3{font-size:18px}
+.more-src summary{cursor:pointer;font-size:13px;color:var(--ai);padding-top:8px}
+.more-src .sources{margin-top:6px}
 </style>
 
 <style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)} body{margin:0} [hidden]{display:none!important} img{max-width:100%}</style>
@@ -166,12 +180,12 @@ form.add input,form.add select{border:1px solid var(--rule);background:var(--pap
     <div class="lede" id="lede"></div>
 
     <section class="sec" id="bizSec" hidden>
-      <h2 class="sec-h"><span class="hl">業務に効く</span><span class="sub">SEO・Web制作・自動化・AI活用に直結する記事</span></h2>
+      <h2 class="sec-h"><span class="hl">業務に効く</span><span class="sub">SEO・Web制作・自動化・AI活用に直結する話題</span></h2>
       <div class="biz" id="biz"></div>
     </section>
 
     <section class="sec">
-      <h2 class="sec-h">全記事<span class="sub" id="allN"></span></h2>
+      <h2 class="sec-h">すべての話題<span class="sub" id="allN"></span></h2>
       <div class="filters">
         <div class="chips" id="kindChips"></div>
         <div class="chips" id="catChips"></div>
@@ -185,7 +199,7 @@ form.add input,form.add select{border:1px solid var(--rule);background:var(--pap
 
   <main id="view-saved" hidden>
     <section class="sec">
-      <h2 class="sec-h">保存した記事<span class="sub">あとで読む・仕事で使う記事</span></h2>
+      <h2 class="sec-h">保存した話題<span class="sub">あとで読む・仕事で使う話題</span></h2>
       <div class="list" id="savedList"></div>
     </section>
   </main>
@@ -202,13 +216,13 @@ form.add input,form.add select{border:1px solid var(--rule);background:var(--pap
     </section>
   </main>
 </div>
-<p class="build">BUILD_TAG 2026-09-30a</p>
+<p class="build">BUILD_TAG 2026-09-30b</p>
 <script>
 document.documentElement.lang = "ja";
 const CATS = ["新モデル・研究","ツール・新機能","活用ノウハウ","SEO・検索・Web","開発・自動化","ビジネス・企業動向","規制・安全・社会"];
 const TYPE_LABEL = {news_jp:"国内ニュース",magazine_jp:"雑誌Web版",news_en:"海外ニュース",youtube_jp:"YouTube 国内",youtube_en:"YouTube 海外"};
 const WEEK = "日月火水木金土";
-const S = { index:[], date:null, items:[], kind:"all", cat:"all", q:"", saved:{}, sources:[], status:null, db:null };
+const S = { index:[], date:null, topics:[], kind:"all", cat:"all", q:"", saved:{}, sources:[], status:null, db:null };
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const read = (() => { try { return new Set(JSON.parse(localStorage.getItem("read") || "[]")); } catch { return new Set(); } })();
@@ -226,52 +240,65 @@ function renderTabs(tab){
 function renderDates(){
   const el = $("dates");
   el.innerHTML = S.index.slice(0, 21).map(x => { const l = dlabel(x.date);
-    return `<button class="date" aria-pressed="${x.date===S.date}" data-date="${x.date}"><b>${l.md}</b><span>${l.w} · ${(x.news||0)+(x.videos||0)}件</span></button>`; }).join("");
+    const n = x.topics != null ? `${x.topics}話題` : `${(x.news||0)+(x.videos||0)}件`;
+    return `<button class="date" aria-pressed="${x.date===S.date}" data-date="${x.date}"><b>${l.md}</b><span>${l.w} · ${n}</span></button>`; }).join("");
 }
 function renderLede(){
   const x = S.index.find(i => i.date === S.date);
   if (!x) { $("lede").innerHTML = ""; $("edition").textContent = "準備中"; return; }
   const l = dlabel(x.date);
   $("edition").textContent = `${x.date.replace(/-/g,".")}（${l.w}）朝刊`;
-  $("lede").innerHTML = `<span>ニュース <b>${x.news||0}</b></span><span>動画 <b>${x.videos||0}</b></span><span>業務に効く <b>${x.biz||0}</b></span>` +
+  $("lede").innerHTML = (x.topics != null ? `<span>話題 <b>${x.topics}</b></span>` : "") +
+    `<span>記事 <b>${x.news||0}</b></span><span>動画 <b>${x.videos||0}</b></span><span>業務に効く <b>${x.biz||0}</b></span>` +
     (x.updatedAt ? `<span>発行 <b>${hm(x.updatedAt)}</b></span>` : "");
 }
-function card(it, opts = {}){
-  const isV = it.kind === "video";
-  const saved = !!S.saved[it.id];
-  const title = it.title_ja || it.title;
-  const showOrig = it.title_ja && it.title && it.title_ja !== it.title;
+function kindTag(it){ return it.kind === "video" ? `<span class="tag vid">動画${it.duration ? " " + esc(it.duration) : ""}</span>` : `<span class="tag">${region(it.src_type)}</span>`; }
+function pointsHtml(it){
   const pts = (it.points || []).filter(Boolean);
-  const ptsHtml = pts.length ? (opts.openPoints ? `<ul class="points">${pts.map(p=>`<li>${esc(p)}</li>`).join("")}</ul>`
-      : `<details class="more"><summary>要点 ${pts.length}つ</summary><ul class="points">${pts.map(p=>`<li>${esc(p)}</li>`).join("")}</ul></details>`) : "";
-  return `<article class="card${read.has(it.id)?" read":""}" data-id="${esc(it.id)}">
-    <div class="meta">
-      <span class="src">${esc(it.src_name)}</span>
-      <span class="tag${isV?" vid":""}">${isV ? "動画" + (it.duration ? " " + esc(it.duration) : "") : region(it.src_type)}</span>
-      ${it.category ? `<span class="tag">${esc(it.category)}</span>` : ""}
-      ${it.importance >= 3 ? `<span class="tag imp">重要</span>` : ""}
-      <span class="time">${opts.withDate && it.date ? esc(dlabel(it.date).md) + " " : ""}${esc(hm(it.published))}</span>
-    </div>
-    <h3><a href="${esc(it.url)}" target="_blank" rel="noopener" data-open="${esc(it.id)}">${esc(title)}</a></h3>
-    ${showOrig ? `<p class="orig">${esc(it.title)}</p>` : ""}
-    ${it.summary ? `<p class="sum">${esc(it.summary)}</p>` : ""}
-    ${ptsHtml}
-    ${it.biz && it.biz_tip ? `<p class="tip"><span class="lbl">業務メモ</span>${esc(it.biz_tip)}</p>` : ""}
+  return pts.length ? `<details class="more"><summary>要点 ${pts.length}つ</summary><ul class="points">${pts.map(p=>`<li>${esc(p)}</li>`).join("")}</ul></details>` : "";
+}
+function card(t, opts = {}){
+  const items = t.items || [];
+  const multi = items.length > 1;
+  const one = items[0] || {};
+  const saved = !!S.saved[t.id];
+  const allRead = items.length && items.every(i => read.has(i.id));
+  const head = multi
+    ? `<span class="tag">${esc(t.category || "")}</span>${t.importance >= 3 ? `<span class="tag imp">重要</span>` : ""}<span class="count">出典 ${items.length}件</span>${opts.withDate && t.date ? `<span class="time">${esc(dlabel(t.date).md)}</span>` : ""}`
+    : `<span class="src">${esc(one.src_name)}</span>${kindTag(one)}${t.category ? `<span class="tag">${esc(t.category)}</span>` : ""}${t.importance >= 3 ? `<span class="tag imp">重要</span>` : ""}<span class="time">${opts.withDate && t.date ? esc(dlabel(t.date).md) + " " : ""}${esc(hm(one.published))}</span>`;
+  const title = multi ? esc(t.title) : `<a href="${esc(one.url)}" target="_blank" rel="noopener" data-open="${esc(one.id)}">${esc(t.title || one.title_ja || one.title)}</a>`;
+  const orig = !multi && one.title_ja && one.title && one.title_ja !== one.title ? `<p class="orig">${esc(one.title)}</p>` : "";
+  const summary = multi ? t.summary : (t.summary || one.summary);
+  const srcLi = i => `
+      <li class="${read.has(i.id) ? "read" : ""}">
+        <div class="s-meta"><span class="src">${esc(i.src_name)}</span>${kindTag(i)}<span class="time">${esc(hm(i.published))}</span>${i.via && i.via !== "Claude" ? `<span class="via">要約：${esc(i.via)}</span>` : ""}</div>
+        <a class="s-title" href="${esc(i.url)}" target="_blank" rel="noopener" data-open="${esc(i.id)}">${esc(i.title_ja || i.title)} ↗</a>
+        ${i.summary ? `<p class="s-sum">${esc(i.summary)}</p>` : ""}${pointsHtml(i)}
+      </li>`;
+  const sources = multi ? `<ul class="sources">${items.slice(0, 3).map(srcLi).join("")}</ul>` +
+      (items.length > 3 ? `<details class="more-src"><summary>ほかの出典 ${items.length - 3}件</summary><ul class="sources">${items.slice(3).map(srcLi).join("")}</ul></details>` : "")
+    : pointsHtml(one);
+  const tip = t.biz && t.biz_tip ? `<p class="tip"><span class="lbl">業務メモ</span>${esc(t.biz_tip)}</p>` : "";
+  return `<article class="card${multi ? " topic" : ""}${allRead ? " read" : ""}" data-id="${esc(t.id)}">
+    <div class="meta">${head}</div>
+    <h3>${title}</h3>${orig}
+    ${summary ? `<p class="sum">${esc(summary)}</p>` : ""}
+    ${tip}${sources}
     <div class="actions">
-      <a class="btn" href="${esc(it.url)}" target="_blank" rel="noopener" data-open="${esc(it.id)}">${isV ? "YouTubeで見る" : "記事を開く"} ↗</a>
-      <button class="btn${saved?" on":""}" data-save="${esc(it.id)}" aria-pressed="${saved}">${saved ? "★ 保存済み" : "☆ 保存"}</button>
-      ${it.via ? `<span class="via">要約：${esc(it.via)}</span>` : ""}
+      ${multi ? "" : `<a class="btn" href="${esc(one.url)}" target="_blank" rel="noopener" data-open="${esc(one.id)}">${one.kind === "video" ? "YouTubeで見る" : "記事を開く"} ↗</a>`}
+      <button class="btn${saved?" on":""}" data-save="${esc(t.id)}" aria-pressed="${saved}">${saved ? "★ 保存済み" : "☆ 保存"}</button>
+      ${!multi && one.via ? `<span class="via">要約：${esc(one.via)}</span>` : ""}
     </div>
   </article>`;
 }
+function matchKind(i){ return S.kind === "all" || (S.kind === "video" ? i.kind === "video" : S.kind === "jp" ? i.kind === "news" && region(i.src_type) === "国内" : i.kind === "news" && region(i.src_type) === "海外"); }
+function topicText(t){ return [t.title, t.summary, t.biz_tip, ...t.items.flatMap(i => [i.title, i.title_ja, i.summary, i.src_name, ...(i.points||[])])].join(" ").toLowerCase(); }
 function filtered(){
   const q = S.q.trim().toLowerCase();
-  return S.items.filter(it =>
-    (S.kind === "all" || (S.kind === "video" ? it.kind === "video" : S.kind === "jp" ? it.kind === "news" && region(it.src_type) === "国内" : it.kind === "news" && region(it.src_type) === "海外")) &&
-    (S.cat === "all" || it.category === S.cat) &&
-    (!q || [it.title, it.title_ja, it.summary, it.src_name, it.biz_tip, ...(it.points||[])].join(" ").toLowerCase().includes(q)));
+  return S.topics.filter(t => t.items.some(matchKind) && (S.cat === "all" || t.category === S.cat) && (!q || topicText(t).includes(q)));
 }
-function sortItems(a, b){ return (b.importance||2) - (a.importance||2) || String(b.published).localeCompare(String(a.published)); }
+function latest(t){ return t.items.reduce((m, i) => String(i.published) > m ? String(i.published) : m, ""); }
+function sortTopics(a, b){ return (b.importance||2) - (a.importance||2) || b.items.length - a.items.length || latest(b).localeCompare(latest(a)); }
 function renderPaper(){
   renderDates(); renderLede();
   if (!S.index.length) {
@@ -282,27 +309,28 @@ function renderPaper(){
       : `<div class="empty"><h3>最初の朝刊を準備しています</h3>毎朝6時に、国内外のニュース・雑誌Web版・YouTubeからAI関連の情報を集めて、ここに並べます。</div>`;
     return;
   }
-  const biz = S.items.filter(i => i.biz).sort(sortItems);
+  const biz = S.topics.filter(t => t.biz).sort(sortTopics);
   $("bizSec").hidden = !biz.length;
-  const shown = S.bizAll ? biz : biz.slice(0, 6);
-  $("biz").innerHTML = shown.map(i => card(i, {openPoints:false})).join("") +
+  const shown = S.bizAll ? biz : biz.slice(0, 5);
+  $("biz").innerHTML = shown.map(t => card(t)).join("") +
     (biz.length > shown.length ? `<button class="btn more-biz" data-bizall="1">残り${biz.length - shown.length}件を表示</button>` : "");
-  const kinds = [["all","すべて",S.items.length],["jp","国内",S.items.filter(i=>i.kind==="news"&&region(i.src_type)==="国内").length],
-    ["en","海外",S.items.filter(i=>i.kind==="news"&&region(i.src_type)==="海外").length],["video","動画",S.items.filter(i=>i.kind==="video").length]];
+  const cnt = f => S.topics.filter(t => t.items.some(f)).length;
+  const kinds = [["all","すべて",S.topics.length],["jp","国内",cnt(i=>i.kind==="news"&&region(i.src_type)==="国内")],
+    ["en","海外",cnt(i=>i.kind==="news"&&region(i.src_type)==="海外")],["video","動画",cnt(i=>i.kind==="video")]];
   $("kindChips").innerHTML = kinds.map(([k,l,n]) => `<button class="chip" data-kind="${k}" aria-pressed="${S.kind===k}">${l}<span class="c">${n}</span></button>`).join("");
-  const cc = {}; for (const i of S.items) cc[i.category] = (cc[i.category]||0) + 1;
+  const cc = {}; for (const t of S.topics) cc[t.category] = (cc[t.category]||0) + 1;
   $("catChips").innerHTML = `<button class="chip" data-cat="all" aria-pressed="${S.cat==="all"}">全カテゴリ</button>` +
     CATS.concat(Object.keys(cc).filter(c => c && c !== "undefined" && !CATS.includes(c))).filter(c => cc[c]).map(c =>
       `<button class="chip" data-cat="${esc(c)}" aria-pressed="${S.cat===c}">${esc(c)}<span class="c">${cc[c]}</span></button>`).join("");
-  const list = filtered().sort(sortItems);
+  const list = filtered().sort(sortTopics);
   $("allN").textContent = `${list.length}件`;
-  $("list").innerHTML = list.length ? list.map(i => card(i)).join("") : `<div class="empty"><h3>該当する記事がありません</h3>絞り込みを外すか、別のキーワードで探してください。</div>`;
+  $("list").innerHTML = list.length ? list.map(t => card(t)).join("") : `<div class="empty"><h3>該当する話題がありません</h3>絞り込みを外すか、別のキーワードで探してください。</div>`;
 }
 function renderSaved(){
   const arr = Object.values(S.saved).sort((a,b) => String(b.savedAt).localeCompare(String(a.savedAt)));
   $("savedN").textContent = arr.length || "";
-  $("savedList").innerHTML = arr.length ? arr.map(x => card(x.item, {withDate:true, openPoints:true})).join("")
-    : `<div class="empty"><h3>保存した記事はまだありません</h3>記事の「☆ 保存」を押すと、ここにまとまります。<br>保存はこの端末に記録されます。</div>`;
+  $("savedList").innerHTML = arr.length ? arr.map(x => card(x.topic || { id: x.item.id, title: x.item.title_ja || x.item.title, category: x.item.category, importance: x.item.importance, biz: x.item.biz, biz_tip: x.item.biz_tip, date: x.item.date, items: [x.item] }, {withDate:true})).join("")
+    : `<div class="empty"><h3>保存した話題はまだありません</h3>「☆ 保存」を押すと、ここにまとまります。<br>保存はこの端末に記録されます。</div>`;
 }
 function renderSources(){
   const rep = {}; for (const r of (S.status?.sources || [])) rep[r.id] = r;
@@ -318,7 +346,7 @@ function renderSources(){
 }
 
 /* ---------- データ ---------- */
-const BUILD_TAG = "2026-09-30a";
+const BUILD_TAG = "2026-09-30b";
 async function getJSON(path){
   const r = await fetch(path + (path.includes("?") ? "&" : "?") + "t=" + Date.now(), { cache: "no-store" });
   if (!r.ok) throw new Error(r.status);
@@ -336,7 +364,7 @@ document.addEventListener("click", e => {
   if (t.dataset.date) { selectDate(t.dataset.date); return; }
   if (t.dataset.kind) { S.kind = t.dataset.kind; renderPaper(); return; }
   if (t.dataset.cat) { S.cat = t.dataset.cat; renderPaper(); return; }
-  if (t.dataset.open) { markRead(t.dataset.open); const c = t.closest(".card"); if (c) c.classList.add("read"); return; }
+  if (t.dataset.open) { markRead(t.dataset.open); const c = t.closest(".sources li") || t.closest(".card"); if (c) c.classList.add("read"); return; }
   if (t.dataset.save) toggleSave(t.dataset.save);
 });
 let qTimer; $("q").addEventListener("input", e => { clearTimeout(qTimer); qTimer = setTimeout(() => { S.q = e.target.value; renderPaper(); }, 150); });
@@ -344,21 +372,33 @@ $("reload").addEventListener("click", () => boot(true));
 
 function toggleSave(id){
   if (S.saved[id]) delete S.saved[id];
-  else { const it = S.items.find(i => i.id === id); if (it) S.saved[id] = { item: { ...it, date: it.date || S.date }, savedAt: new Date().toISOString() }; }
+  else { const t = S.topics.find(x => x.id === id); if (t) S.saved[id] = { topic: { ...t, date: S.date }, savedAt: new Date().toISOString() }; }
   storeSaved(); renderSaved(); if (!$("view-paper").hidden) renderPaper();
+}
+
+function toTopics(doc){
+  const byId = {}; for (const it of (doc.items || [])) byId[it.id] = it;
+  const used = new Set(); const out = [];
+  for (const t of (doc.topics || [])) {
+    const items = (t.item_ids || []).map(x => byId[x]).filter(i => i && !used.has(i.id));
+    items.forEach(i => used.add(i.id));
+    if (items.length) out.push({ ...t, items: items.sort((a,b) => String(b.published).localeCompare(String(a.published))) });
+  }
+  for (const it of (doc.items || [])) if (!used.has(it.id)) { used.add(it.id);
+    out.push({ id: "s" + it.id, title: it.title_ja || it.title, summary: "", category: it.category, importance: it.importance, biz: it.biz, biz_tip: it.biz_tip, items: [it] }); }
+  return out;
 }
 
 async function selectDate(d){
   S.date = d; S.cat = "all"; S.bizAll = false;
   const cached = S.cache[d];
-  S.items = cached || [];
+  S.topics = cached || [];
   renderPaper();
   if (cached) return;
   try {
     const doc = await getJSON(`data/issues/${d}.json`);
-    const seen = new Set();
-    S.cache[d] = (doc.items || []).map(it => ({ ...it, date: d })).filter(i => !seen.has(i.id) && seen.add(i.id));
-    if (S.date === d) { S.items = S.cache[d]; renderPaper(); }
+    S.cache[d] = toTopics(doc);
+    if (S.date === d) { S.topics = S.cache[d]; renderPaper(); }
   } catch { if (S.date === d) { $("list").innerHTML = `<div class="empty"><h3>この日の紙面を読み込めませんでした</h3>「更新」を押してもう一度お試しください。</div>`; } }
 }
 

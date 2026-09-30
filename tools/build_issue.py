@@ -1,11 +1,14 @@
-# AIトレンド朝刊 紙面組み立て ver2.0 (2026-09-30)
+# AIトレンド朝刊 紙面組み立て ver2.1 (2026-09-30) — 同じ話題の記事をトピックにまとめる
 # 収集結果＋要約を、リポジトリの data/ に書き込む（issues・index・seen・status）。
 # 使い方:
 #   python3 tools/build_issue.py --out <collectorの出力dir> --enrich enrich_news.json --vsum vsum.json \
-#       --date YYYY-MM-DD --repo <リポジトリのdir> [--note "今回の特記事項"]
+#       --topics topics.json --date YYYY-MM-DD --repo <リポジトリのdir> [--note "今回の特記事項"]
 # enrich_news.json: {"<news.jsonの添字>": {"t":日本語タイトル(英語記事のみ),"s":要約,"c":カテゴリ記号,"b":業務メモ(なければ省略),"i":重要度1-3}}
 #   載せない記事はキーを省略する
 # vsum.json: {"<video_id>": {"title_ja","summary","points":[],"biz_tip","category","importance","via"}}
+# topics.json: [{"t":トピック見出し,"s":複数の出典をまとめた要約,"c":カテゴリ記号,"i":重要度,"b":業務メモ(任意),
+#                "news":[news.jsonの添字...],"videos":["video_id"...]}]
+#   2件以上の出典がある話題だけ書けばよい。どのトピックにも入らない記事は1件だけのトピックになる。
 import argparse, json, os
 from datetime import datetime, timezone, timedelta
 
@@ -35,6 +38,7 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--enrich", required=True)
     ap.add_argument("--vsum", required=True)
+    ap.add_argument("--topics", default="")
     ap.add_argument("--date", required=True)
     ap.add_argument("--repo", required=True)
     ap.add_argument("--note", default="")
@@ -68,12 +72,42 @@ def main():
                       "biz": bool(s.get("biz_tip")), "biz_tip": s.get("biz_tip", ""),
                       "importance": s.get("importance", 2), "via": s.get("via", "未要約")})
 
-    # 同じ日の再実行では既存の記事を残し、新しい記事で上書き・追加する
+    # トピック（同じ話題の記事を1つにまとめる）
+    news_id = {i: x["id"] for i, x in enumerate(news)}
+    vid_id = {v.get("video_id"): v["id"] for v in videos}
+    kept = {i["id"] for i in items}
+    topics, used = [], set()
+    for n, t in enumerate(load(a.topics, []) if a.topics else []):
+        ids = [news_id.get(int(k)) for k in t.get("news", [])] + [vid_id.get(k) for k in t.get("videos", [])]
+        ids += t.get("item_ids", [])
+        ids = [x for x in ids if x and x in kept and x not in used]
+        if not ids:
+            continue
+        used.update(ids)
+        topics.append({"id": f"t{a.date.replace('-', '')}{n:02d}", "title": t.get("t", ""), "summary": t.get("s", ""),
+                       "category": CAT.get(t.get("c"), t.get("c")), "importance": t.get("i", 2),
+                       "biz": bool(t.get("b")), "biz_tip": t.get("b", ""), "item_ids": ids})
+
+    # 同じ日の再実行では既存の記事とトピックを残し、新しいもので上書き・追加する
     issue_path = os.path.join(data, "issues", f"{a.date}.json")
-    prev = load(issue_path, {}).get("items", [])
+    prev_doc = load(issue_path, {})
+    prev = prev_doc.get("items", [])
     have = {i["id"] for i in items}
     items += [p for p in prev if p.get("id") not in have]
-    save(issue_path, {"date": a.date, "updatedAt": now, "items": items})
+    all_ids = {i["id"] for i in items}
+    for pt in prev_doc.get("topics", []):
+        ids = [x for x in pt.get("item_ids", []) if x in all_ids and x not in used]
+        if ids and not any(x in have for x in pt.get("item_ids", [])):
+            used.update(ids)
+            topics.append({**pt, "item_ids": ids})
+    # どのトピックにも入らない記事は、1件だけのトピックにする
+    for it in items:
+        if it["id"] in used:
+            continue
+        topics.append({"id": "s" + it["id"], "title": it.get("title_ja") or it["title"], "summary": "",
+                       "category": it.get("category"), "importance": it.get("importance", 2),
+                       "biz": bool(it.get("biz")), "biz_tip": it.get("biz_tip", ""), "item_ids": [it["id"]]})
+    save(issue_path, {"date": a.date, "updatedAt": now, "items": items, "topics": topics})
 
     n_news = sum(i["kind"] == "news" for i in items)
     n_vid = sum(i["kind"] == "video" for i in items)
@@ -82,7 +116,9 @@ def main():
     # 目次
     idx = load(os.path.join(data, "index.json"), {"dates": []})
     dates = [d for d in idx.get("dates", []) if d.get("date") != a.date]
-    dates.append({"date": a.date, "news": n_news, "videos": n_vid, "biz": n_biz, "updatedAt": now})
+    n_topic = len(topics)
+    n_biz = sum(bool(t.get("biz")) for t in topics)
+    dates.append({"date": a.date, "topics": n_topic, "news": n_news, "videos": n_vid, "biz": n_biz, "updatedAt": now})
     dates.sort(key=lambda d: d["date"], reverse=True)
     cutoff = (datetime.now(JST) - timedelta(days=KEEP_DAYS)).strftime("%Y-%m-%d")
     dates = [d for d in dates if d["date"] >= cutoff]
@@ -112,7 +148,7 @@ def main():
             via[i["via"]] = via.get(i["via"], 0) + 1
     save(os.path.join(data, "status.json"), {"ranAt": report.get("ran_at", now), "sources": report.get("sources", []),
                                              "videoVia": via, "note": a.note})
-    print(f"issue {a.date}: news={n_news} videos={n_vid} biz={n_biz} removed={removed} video_via={via}")
+    print(f"issue {a.date}: topics={len(topics)} news={n_news} videos={n_vid} biz={n_biz} removed={removed} video_via={via}")
 
 
 if __name__ == "__main__":
