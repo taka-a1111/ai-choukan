@@ -163,6 +163,8 @@ form.add input,form.add select{border:1px solid var(--rule);background:var(--pap
 .kp li{font-size:14.5px;line-height:1.7;overflow-wrap:anywhere}
 .kp li::marker{color:var(--ai)}
 .why{margin:10px 0 0;font-size:14px;line-height:1.7;color:var(--ink);background:var(--ai-soft);border-radius:6px;padding:8px 10px}
+.avail{margin:10px 0 0;font-size:14px;line-height:1.7;color:var(--ink);border:1px solid var(--ai);border-radius:6px;padding:8px 10px;overflow-wrap:anywhere}
+.avail.unk{border-style:dashed;color:var(--muted)}
 .lbl2{font-size:11px;letter-spacing:.06em;color:var(--ai);margin-right:6px;white-space:nowrap}
 .terms{margin:10px 0 0;display:grid;gap:4px;font-size:13px;color:var(--muted)}
 .terms div{display:flex;gap:8px;flex-wrap:wrap}
@@ -233,7 +235,7 @@ form.add input,form.add select{border:1px solid var(--rule);background:var(--pap
     </section>
   </main>
 </div>
-<p class="build">BUILD_TAG 2026-09-30c</p>
+<p class="build">BUILD_TAG 2026-10-01a</p>
 <script>
 document.documentElement.lang = "ja";
 const CATS = ["新モデル・研究","ツール・新機能","活用ノウハウ","SEO・検索・Web","開発・自動化","ビジネス・企業動向","規制・安全・社会"];
@@ -292,6 +294,7 @@ function card(t, opts = {}){
     <div class="meta">${head}</div>
     <h3>${esc(t.title || one.title_ja || one.title)}</h3>
     ${lead ? `<p class="lead">${esc(lead)}</p>` : ""}
+    ${t.avail ? `<p class="avail${/不明|未発表|発表されていません|明らかにしていません/.test(t.avail) ? " unk" : ""}"><span class="lbl2">いつ・誰が使える？</span>${esc(t.avail)}</p>` : ""}
     ${points.length ? `<ul class="kp">${points.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
     ${t.why ? `<p class="why"><span class="lbl2">なぜ大事？</span>${esc(t.why)}</p>` : ""}
     ${terms.length ? `<dl class="terms">${terms.map(x => `<div><dt>${esc(x[0])}</dt><dd>${esc(x[1])}</dd></div>`).join("")}</dl>` : ""}
@@ -303,7 +306,7 @@ function card(t, opts = {}){
   </article>`;
 }
 function matchKind(i){ return S.kind === "all" || (S.kind === "video" ? i.kind === "video" : S.kind === "jp" ? i.kind === "news" && region(i.src_type) === "国内" : i.kind === "news" && region(i.src_type) === "海外"); }
-function topicText(t){ return [t.title, t.summary, t.lead, t.why, ...(t.points||[]), t.biz_tip, ...t.items.flatMap(i => [i.title, i.title_ja, i.summary, i.src_name, ...(i.points||[])])].join(" ").toLowerCase(); }
+function topicText(t){ return [t.title, t.summary, t.lead, t.avail, t.why, ...(t.points||[]), t.biz_tip, ...t.items.flatMap(i => [i.title, i.title_ja, i.summary, i.src_name, ...(i.points||[])])].join(" ").toLowerCase(); }
 function filtered(){
   const q = S.q.trim().toLowerCase();
   return S.topics.filter(t => t.items.some(matchKind) && (S.cat === "all" || t.category === S.cat) && (!q || topicText(t).includes(q)));
@@ -357,7 +360,7 @@ function renderSources(){
 }
 
 /* ---------- データ ---------- */
-const BUILD_TAG = "2026-09-30c";
+const BUILD_TAG = "2026-10-01a";
 async function getJSON(path){
   const r = await fetch(path + (path.includes("?") ? "&" : "?") + "t=" + Date.now(), { cache: "no-store" });
   if (!r.ok) throw new Error(r.status);

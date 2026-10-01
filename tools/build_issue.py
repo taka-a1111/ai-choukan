@@ -1,13 +1,13 @@
-# AIトレンド朝刊 紙面組み立て ver2.2 (2026-09-30) — 同じ話題の記事をまとめ、元記事を読まなくて済む解説を付ける
+# AIトレンド朝刊 紙面組み立て ver2.3 (2026-10-01) 「いつ・誰が使える」欄を追加 — 同じ話題の記事をまとめ、元記事を読まなくて済む解説を付ける
 # 収集結果＋要約を、リポジトリの data/ に書き込む（issues・index・seen・status）。
 # 使い方:
 #   python3 tools/build_issue.py --out <collectorの出力dir> --enrich enrich_news.json --vsum vsum.json \
 #       --topics topics.json --date YYYY-MM-DD --repo <リポジトリのdir> [--note "今回の特記事項"]
-# enrich_news.json: {"<news.jsonの添字>": {"t":日本語タイトル(英語記事のみ),"s":要約,"c":カテゴリ記号,"b":業務メモ(なければ省略),"i":重要度1-3}}
+# enrich_news.json: {"<news.jsonの添字>": {"t":日本語タイトル(英語記事のみ),"s":要約,"c":カテゴリ記号,"b":業務メモ(なければ省略),"i":重要度1-3,"a":いつ・誰が使えるか(新しいツール・機能のみ)}}
 #   載せない記事はキーを省略する
 # vsum.json: {"<video_id>": {"title_ja","summary","points":[],"biz_tip","category","importance","via"}}
 # topics.json: [{"t":見出し,"lead":ひとことで(1〜2文),"points":[要点...],"why":なぜ大事か,"terms":[["用語","説明"]...],
-#                "c":カテゴリ記号,"i":重要度,"b":業務メモ(任意),"news":[news.jsonの添字...],"videos":["video_id"...]}]
+#                "avail":いつ・誰が使えるか(新しいツール・機能・モデルの話題だけ),"c":カテゴリ記号,"i":重要度,"b":業務メモ(任意),"news":[news.jsonの添字...],"videos":["video_id"...]}]
 #   どのトピックにも入らない記事は、その記事の要約だけの1件の話題になる。
 import argparse, json, os
 from datetime import datetime, timezone, timedelta
@@ -61,7 +61,7 @@ def main():
                       "src_type": x["src_type"], "title": x["title"], "title_ja": e.get("t") or x["title"],
                       "url": x["url"], "published": x["published"], "category": CAT.get(e.get("c"), e.get("c")),
                       "summary": e.get("s", ""), "biz": bool(e.get("b")), "biz_tip": e.get("b", ""),
-                      "importance": e.get("i", 2), "via": "Claude"})
+                      "importance": e.get("i", 2), "avail": e.get("a", ""), "via": "Claude"})
     for v in videos:
         s = vs.get(v.get("video_id"), {})
         items.append({"id": v["id"], "kind": "video", "src_id": v["src_id"], "src_name": v["src_name"],
@@ -70,7 +70,7 @@ def main():
                       "is_short": v.get("is_short", False), "category": s.get("category") or "ツール・新機能",
                       "summary": s.get("summary", ""), "points": s.get("points", []),
                       "biz": bool(s.get("biz_tip")), "biz_tip": s.get("biz_tip", ""),
-                      "importance": s.get("importance", 2), "via": s.get("via", "未要約")})
+                      "importance": s.get("importance", 2), "avail": s.get("avail", ""), "via": s.get("via", "未要約")})
 
     # トピック（同じ話題の記事を1つにまとめる）
     news_id = {i: x["id"] for i, x in enumerate(news)}
@@ -85,7 +85,7 @@ def main():
             continue
         used.update(ids)
         topics.append({"id": f"t{a.date.replace('-', '')}{n:02d}", "title": t.get("t", ""), "summary": t.get("s", ""),
-                       "lead": t.get("lead") or t.get("s", ""), "points": t.get("points", []), "why": t.get("why", ""),
+                       "lead": t.get("lead") or t.get("s", ""), "avail": t.get("avail", ""), "points": t.get("points", []), "why": t.get("why", ""),
                        "terms": t.get("terms", []),
                        "category": CAT.get(t.get("c"), t.get("c")), "importance": t.get("i", 2),
                        "biz": bool(t.get("b")), "biz_tip": t.get("b", ""), "item_ids": ids})
@@ -107,7 +107,7 @@ def main():
         if it["id"] in used:
             continue
         topics.append({"id": "s" + it["id"], "title": it.get("title_ja") or it["title"], "summary": "",
-                       "lead": it.get("summary", ""), "points": it.get("points", []) if it.get("kind") == "video" else [],
+                       "lead": it.get("summary", ""), "avail": it.get("avail", ""), "points": it.get("points", []) if it.get("kind") == "video" else [],
                        "why": "", "terms": [],
                        "category": it.get("category"), "importance": it.get("importance", 2),
                        "biz": bool(it.get("biz")), "biz_tip": it.get("biz_tip", ""), "item_ids": [it["id"]]})
