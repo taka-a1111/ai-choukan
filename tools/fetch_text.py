@@ -1,4 +1,4 @@
-# AIトレンド朝刊 本文取得 ver1.1 (2026-10-01) 文字コード自動判別
+# AIトレンド朝刊 本文取得 ver1.2 (2026-10-05) 取得は並列・本文解析は1件ずつ（並列解析で落ちる問題の修正）
 # 話題ごとに、出典記事の本文を取ってきて1つのテキストにまとめる（Claudeが読んで解説を書くための材料）。
 # 使い方A（毎朝の収集）: python3 tools/fetch_text.py --groups W/groups.json --collected W/out --vsum W/vsum.json --out W/txt
 #   groups.json: [{"key":"T01","t":"話題の見出し","news":[news.jsonの添字...],"videos":["video_id"...],"i":重要度}]
@@ -13,11 +13,20 @@ from concurrent.futures import ThreadPoolExecutor
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36"
 
 
-def fetch(url):
+def download(url):
     try:
         req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept-Language": "ja,en;q=0.8"})
         with urllib.request.urlopen(req, timeout=25) as r:
-            raw = r.read()
+            return r.read()
+    except Exception:  # noqa
+        return b""
+
+
+def extract(raw):
+    # 本文の解析（trafilatura/lxml）は並列にすると落ちることがあるので、1件ずつ行う
+    if not raw:
+        return ""
+    try:
         import trafilatura
         enc = None
         m = re.search(rb'charset=["\']?([A-Za-z0-9_\-]+)', raw[:3000])
@@ -27,13 +36,12 @@ def fetch(url):
             html = raw.decode(enc or "utf-8")
         except Exception:
             html = raw.decode("utf-8", "ignore")
-        txt = trafilatura.extract(html, include_comments=False, include_tables=False,
-                                  favor_precision=True) or ""
+        txt = trafilatura.extract(html, include_comments=False, include_tables=False, favor_precision=True) or ""
         junk = re.compile(r"クリップ機能|いいね|再度読みたく|サインインした状態|More From|編集部です|関連記事|この連載の一覧|Articles in This Series|"
                           r"おすすめ|Picks for You|今日の必読|Today.s Picks|Special$|^PR$|講座|早割|Copyright|Subscribe|ニュースレター|有料会員")
         lines = [l for l in txt.splitlines() if l.strip() and not junk.search(l)]
         return "\n".join(dict.fromkeys(lines)).strip()
-    except Exception as e:  # noqa
+    except Exception:  # noqa
         return ""
 
 
@@ -67,8 +75,9 @@ def main():
         targets = [i for i in t["items"] if i.get("kind") != "video" and not i.get("skip")][: a.max_sources]
         for i in targets:
             jobs.append(i["url"])
-    with ThreadPoolExecutor(max_workers=10) as ex:
-        texts = dict(zip(jobs, ex.map(fetch, jobs)))
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        raws = list(ex.map(download, jobs))
+    texts = {u: extract(r) for u, r in zip(jobs, raws)}
     lines = []
     for t in data["topics"]:
         parts = [f"# {t['key']} {t['title']}"]
