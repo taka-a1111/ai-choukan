@@ -1,4 +1,4 @@
-# AIトレンド朝刊 紙面組み立て ver2.4 (2026-11-11) 既報の話題を二重に載せない（続報 prev・既報の除外 --drop・同じ日の話題への追加 into）
+# AIトレンド朝刊 紙面組み立て ver2.5 (2026-11-11) 図解（fig）を追加。ver2.4：既報の話題を二重に載せない（続報 prev・既報の除外 --drop・同じ日の話題への追加 into）
 # 収集結果＋要約を、リポジトリの data/ に書き込む（issues・index・seen・status）。
 # 使い方:
 #   python3 tools/build_issue.py --out <collectorの出力dir> --enrich enrich_news.json --vsum vsum.json \
@@ -11,6 +11,12 @@
 #   どのトピックにも入らない記事は、その記事の要約だけの1件の話題になる。
 #   続報（過去の号で扱った話題に新しい事実が出た）は "prev":{"date":"YYYY-MM-DD","id":"過去の話題ID","title":"過去の見出し"} を付け、新しい事実だけを書く。
 #   同じ日の再実行で、すでに今日の号にある話題に出典を足すときは "into":"今日の話題ID" を付ける（lead などを書けば上書き、書かなければ出典だけ足す）。
+#   図解は "fig" に書く（解説の事実だけで作る。合う形がなければ付けない）。形は5つ:
+#     {"type":"bars","title":"何の比較か","unit":"％","items":[{"label":"A","value":41.3,"hl":true,"note":"任意"},...]}   数字の比較（2〜6本。hl は目立たせる1本）
+#     {"type":"compare","title":"...","cols":["項目","A","B"],"rows":[["料金","…","…"],...]}   表（2〜4列、1〜6行。1列目が行の見出し）
+#     {"type":"flow","title":"...","steps":[{"label":"手順や段階","note":"任意"},...]}   流れ（2〜6段）
+#     {"type":"timeline","title":"...","items":[{"when":"11/19ごろ","text":"上場"},...]}   時系列（2〜6件）
+#     {"type":"groups","title":"...","groups":[{"label":"まとまりの名前","items":["…","…"]},...]}   整理図（1〜5組、各1〜6個）
 # drop.json（--drop）: {"news":[news.jsonの添字...],"videos":["video_id"...]}  過去の号で扱い済みで新しい事実がない記事・動画。紙面に載せず、掲載済み（seen）にだけ記録する。
 import argparse, json, os
 from datetime import datetime, timezone, timedelta
@@ -34,6 +40,35 @@ def save(path, obj):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(obj, f, ensure_ascii=False, separators=(",", ":"))
+
+
+def clean_fig(f):
+    """図解の形を確かめる。崩れたものは載せない（None を返す）。"""
+    if not isinstance(f, dict):
+        return None
+    t, title = f.get("type"), str(f.get("title", ""))[:80]
+    S = lambda x, n=120: str(x if x is not None else "")[:n]
+    try:
+        if t == "bars":
+            it = [{"label": S(x.get("label"), 60), "value": x["value"], **({"hl": True} if x.get("hl") else {}), **({"note": S(x.get("note"))} if x.get("note") else {})}
+                  for x in f.get("items", []) if isinstance(x, dict) and isinstance(x.get("value"), (int, float))][:6]
+            return {"type": t, "title": title, "unit": S(f.get("unit"), 10), "items": it} if len(it) >= 2 else None
+        if t == "compare":
+            cols = [S(c, 40) for c in f.get("cols", [])][:4]
+            rows = [[S(c) for c in r][:len(cols)] for r in f.get("rows", []) if isinstance(r, list) and r][:6]
+            return {"type": t, "title": title, "cols": cols, "rows": rows} if len(cols) >= 2 and rows else None
+        if t == "flow":
+            st = [{"label": S(x.get("label")), **({"note": S(x.get("note"))} if x.get("note") else {})} for x in f.get("steps", []) if isinstance(x, dict) and x.get("label")][:6]
+            return {"type": t, "title": title, "steps": st} if len(st) >= 2 else None
+        if t == "timeline":
+            it = [{"when": S(x.get("when"), 30), "text": S(x.get("text"))} for x in f.get("items", []) if isinstance(x, dict) and x.get("text")][:6]
+            return {"type": t, "title": title, "items": it} if len(it) >= 2 else None
+        if t == "groups":
+            g = [{"label": S(x.get("label"), 40), "items": [S(i, 60) for i in x.get("items", []) if i][:6]} for x in f.get("groups", []) if isinstance(x, dict) and x.get("label") and x.get("items")][:5]
+            return {"type": t, "title": title, "groups": g} if g else None
+    except Exception:
+        return None
+    return None
 
 
 def main():
@@ -115,6 +150,12 @@ def main():
         pv = t.get("prev")
         if isinstance(pv, dict) and pv.get("date"):
             new["prev"] = {"date": pv.get("date"), "id": pv.get("id", ""), "title": pv.get("title", "")}
+        if t.get("fig"):
+            fg = clean_fig(t["fig"])
+            if fg:
+                new["fig"] = fg
+            else:
+                print(f"fig skipped (形が合わない): {t.get('t', '')[:30]}")
         if t.get("into"):
             into.setdefault(t["into"], []).append(new)
         else:
@@ -139,6 +180,8 @@ def main():
                     merged["points"] = nw["points"]
                 if nw.get("terms"):
                     merged["terms"] = nw["terms"]
+                if nw.get("fig"):
+                    merged["fig"] = nw["fig"]
                 merged["importance"] = max(merged.get("importance", 2), nw.get("importance", 2))
                 merged["biz"] = bool(merged.get("biz_tip"))
                 ids += nw["item_ids"]

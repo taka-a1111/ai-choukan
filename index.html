@@ -182,6 +182,36 @@ form.add input,form.add select{border:1px solid var(--rule);background:var(--pap
 .prevnote{margin:4px 0 0;font-size:12.5px;line-height:1.6;color:var(--muted);overflow-wrap:anywhere}
 .linkbtn{border:0;background:none;padding:0;color:var(--ai);text-decoration:underline;cursor:pointer;font-size:12.5px}
 
+/* 図解 */
+.fig{margin:12px 0 0;border:1px solid var(--rule);border-radius:8px;padding:10px 12px 12px;background:var(--paper);min-width:0}
+.fig figcaption{font-size:12.5px;color:var(--muted);margin:0 0 8px;line-height:1.5}
+.fig figcaption b{font-size:11px;letter-spacing:.06em;color:var(--ai);border:1px solid var(--ai);border-radius:3px;padding:0 5px;margin-right:6px;font-weight:500}
+.fig-bars{display:grid;gap:8px}
+.fb-l{display:flex;justify-content:space-between;gap:8px;font-size:13px;line-height:1.45}
+.fb-l span{min-width:0;overflow-wrap:anywhere}
+.fb-l b{font-family:var(--f-data);font-weight:500;white-space:nowrap}
+.fb-t{height:10px;border-radius:5px;background:var(--rule);margin-top:3px;overflow:hidden}
+.fb-t i{display:block;height:100%;border-radius:5px;background:var(--muted)}
+.fb.top .fb-t i{background:var(--ai)} .fb.top .fb-l{color:var(--ai);font-weight:500}
+.fb-n{font-size:11.5px;color:var(--muted);line-height:1.45;margin-top:2px}
+.fig-tbl{width:100%;border-collapse:collapse;table-layout:fixed;font-size:13px;line-height:1.5}
+.fig-tbl th,.fig-tbl td{border:1px solid var(--rule);padding:5px 7px;text-align:left;vertical-align:top;overflow-wrap:anywhere;background:var(--sheet)}
+.fig-tbl thead th{background:var(--ai-soft);color:var(--ai);font-weight:500;font-size:12px}
+.fig-tbl tbody th{font-weight:500;color:var(--muted);font-size:12px}
+.fig-flow{list-style:none;margin:0;padding:0;display:grid;gap:18px}
+.fig-flow li{position:relative;background:var(--sheet);border:1px solid var(--rule);border-left:3px solid var(--ai);border-radius:6px;padding:7px 10px;font-size:13.5px;line-height:1.5;overflow-wrap:anywhere}
+.fig-flow li+li::before{content:"▼";position:absolute;top:-17px;left:50%;transform:translateX(-50%);font-size:10px;color:var(--ai)}
+.fig-flow small,.fig-tl small{display:block;font-size:12px;color:var(--muted);line-height:1.5}
+.fig-tl{list-style:none;margin:0;padding:0 0 0 14px;border-left:2px solid var(--ai);display:grid;gap:10px}
+.fig-tl li{position:relative;font-size:13.5px;line-height:1.5;overflow-wrap:anywhere}
+.fig-tl li::before{content:"";position:absolute;left:-20px;top:6px;width:10px;height:10px;border-radius:50%;background:var(--ai);border:2px solid var(--paper);box-sizing:border-box}
+.fig-tl b{display:block;font-family:var(--f-data);font-weight:500;font-size:12px;color:var(--ai)}
+.fig-grp{display:grid;gap:8px}
+.fg{display:grid;gap:5px}
+.fg-h{font-size:12px;font-weight:500;color:var(--ai)}
+.fg-c{display:flex;flex-wrap:wrap;gap:5px}
+.fg-c span{font-size:12.5px;line-height:1.45;background:var(--sheet);border:1px solid var(--rule);border-radius:5px;padding:3px 8px;overflow-wrap:anywhere;min-width:0}
+
 /* 読み上げ */
 .card.speaking{border-color:var(--ai);box-shadow:0 0 0 2px var(--ai-soft)}
 .sec-h .btn{font-family:var(--f-body);letter-spacing:0;margin-left:auto}
@@ -264,7 +294,7 @@ body.has-player .wrap{padding-bottom:150px}
     </div>
   </div>
 </div>
-<p class="build">BUILD_TAG 2026-11-11a</p>
+<p class="build">BUILD_TAG 2026-11-11b</p>
 <script>
 document.documentElement.lang = "ja";
 const CATS = ["新モデル・研究","ツール・新機能","活用ノウハウ","SEO・検索・Web","開発・自動化","ビジネス・企業動向","規制・安全・社会"];
@@ -395,6 +425,32 @@ function pointsHtml(it){
   const pts = (it.points || []).filter(Boolean);
   return pts.length ? `<details class="more"><summary>要点 ${pts.length}つ</summary><ul class="points">${pts.map(p=>`<li>${esc(p)}</li>`).join("")}</ul></details>` : "";
 }
+/* 図解：解説の事実を、棒グラフ・表・流れ・年表・整理図のどれかで見せる（画像は使わず、データから描く） */
+function figHtml(f){
+  if (!f || typeof f !== "object") return "";
+  const A = x => Array.isArray(x) ? x : [];
+  let body = "";
+  try {
+    if (f.type === "bars") {
+      const it = A(f.items).filter(x => x && isFinite(+x.value)); if (it.length < 2) return "";
+      const max = Math.max(...it.map(x => Math.abs(+x.value))) || 1;
+      body = `<div class="fig-bars">${it.map(x => `<div class="fb${x.hl ? " top" : ""}"><div class="fb-l"><span>${esc(x.label)}</span><b>${esc(x.value)}${esc(f.unit || "")}</b></div><div class="fb-t"><i style="width:${Math.max(2, Math.round(Math.abs(+x.value) / max * 100))}%"></i></div>${x.note ? `<div class="fb-n">${esc(x.note)}</div>` : ""}</div>`).join("")}</div>`;
+    } else if (f.type === "compare") {
+      const cols = A(f.cols), rows = A(f.rows).filter(r => Array.isArray(r) && r.length); if (cols.length < 2 || !rows.length) return "";
+      body = `<table class="fig-tbl"><thead><tr>${cols.map(c => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>${rows.map(r => `<tr>${cols.map((_, i) => i === 0 ? `<th>${esc(r[i] ?? "")}</th>` : `<td>${esc(r[i] ?? "")}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+    } else if (f.type === "flow") {
+      const st = A(f.steps).filter(x => x && x.label); if (st.length < 2) return "";
+      body = `<ol class="fig-flow">${st.map(x => `<li>${esc(x.label)}${x.note ? `<small>${esc(x.note)}</small>` : ""}</li>`).join("")}</ol>`;
+    } else if (f.type === "timeline") {
+      const it = A(f.items).filter(x => x && x.text); if (it.length < 2) return "";
+      body = `<ol class="fig-tl">${it.map(x => `<li><b>${esc(x.when || "")}</b>${esc(x.text)}</li>`).join("")}</ol>`;
+    } else if (f.type === "groups") {
+      const g = A(f.groups).filter(x => x && x.label && A(x.items).length); if (!g.length) return "";
+      body = `<div class="fig-grp">${g.map(x => `<div class="fg"><div class="fg-h">${esc(x.label)}</div><div class="fg-c">${A(x.items).map(i => `<span>${esc(i)}</span>`).join("")}</div></div>`).join("")}</div>`;
+    } else return "";
+  } catch { return ""; }
+  return `<figure class="fig"><figcaption><b>図解</b>${esc(f.title || "")}</figcaption>${body}</figure>`;
+}
 function card(t, opts = {}){
   const items = t.items || [];
   const multi = items.length > 1;
@@ -416,6 +472,7 @@ function card(t, opts = {}){
     <h3>${esc(t.title || one.title_ja || one.title)}</h3>
     ${pvNote}
     ${lead ? `<p class="lead">${esc(lead)}</p>` : ""}
+    ${figHtml(t.fig)}
     ${t.avail ? `<p class="avail${/不明|未発表|発表されていません|明らかにしていません/.test(t.avail) ? " unk" : ""}"><span class="lbl2">いつ・誰が使える？</span>${esc(t.avail)}</p>` : ""}
     ${points.length ? `<ul class="kp">${points.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
     ${t.why ? `<p class="why"><span class="lbl2">なぜ大事？</span>${esc(t.why)}</p>` : ""}
@@ -484,7 +541,7 @@ function renderSources(){
 }
 
 /* ---------- データ ---------- */
-const BUILD_TAG = "2026-11-11a";
+const BUILD_TAG = "2026-11-11b";
 async function getJSON(path){
   const r = await fetch(path + (path.includes("?") ? "&" : "?") + "t=" + Date.now(), { cache: "no-store" });
   if (!r.ok) throw new Error(r.status);
