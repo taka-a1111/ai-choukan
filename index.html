@@ -176,6 +176,23 @@ form.add input,form.add select{border:1px solid var(--rule);background:var(--pap
 .srcs li a{display:block;font-size:13px;line-height:1.55;color:var(--ink);text-decoration:none;overflow-wrap:anywhere}
 .srcs li.read a{opacity:.6}
 .s-src{display:block;font-size:11px;color:var(--muted)}
+
+/* 続報 */
+.tag.fu{border-color:var(--ai);color:var(--ai);background:var(--ai-soft)}
+.prevnote{margin:4px 0 0;font-size:12.5px;line-height:1.6;color:var(--muted);overflow-wrap:anywhere}
+.linkbtn{border:0;background:none;padding:0;color:var(--ai);text-decoration:underline;cursor:pointer;font-size:12.5px}
+
+/* 読み上げ */
+.card.speaking{border-color:var(--ai);box-shadow:0 0 0 2px var(--ai-soft)}
+.sec-h .btn{font-family:var(--f-body);letter-spacing:0;margin-left:auto}
+.player{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--sheet);border-top:1px solid var(--rule);padding:8px 12px calc(8px + env(safe-area-inset-bottom,0px))}
+.player-in{max-width:760px;margin:0 auto;display:grid;gap:6px}
+.player-now{font-size:12.5px;line-height:1.5;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.player-now b{font-family:var(--f-data);font-weight:500;color:var(--ink);margin-right:6px}
+.player-btns{display:flex;gap:6px;align-items:center}
+.player-btns .btn{padding:7px 12px;font-size:14px;white-space:nowrap}
+.player-btns .sp{margin-left:auto}
+body.has-player .wrap{padding-bottom:150px}
 </style>
 
 <style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)} body{margin:0} [hidden]{display:none!important} img{max-width:100%}</style>
@@ -199,12 +216,12 @@ form.add input,form.add select{border:1px solid var(--rule);background:var(--pap
     <div class="lede" id="lede"></div>
 
     <section class="sec" id="bizSec" hidden>
-      <h2 class="sec-h"><span class="hl">業務に効く</span><span class="sub">SEO・Web制作・自動化・AI活用に直結する話題</span></h2>
+      <h2 class="sec-h"><span class="hl">業務に効く</span><span class="sub">SEO・Web制作・自動化・AI活用に直結する話題</span><button class="btn" data-speakall="biz" hidden>▶ 読み上げ</button></h2>
       <div class="biz" id="biz"></div>
     </section>
 
     <section class="sec">
-      <h2 class="sec-h">すべての話題<span class="sub" id="allN"></span></h2>
+      <h2 class="sec-h">すべての話題<span class="sub" id="allN"></span><button class="btn" data-speakall="list" hidden>▶ 上から読み上げ</button></h2>
       <div class="filters">
         <div class="chips" id="kindChips"></div>
         <div class="chips" id="catChips"></div>
@@ -235,7 +252,19 @@ form.add input,form.add select{border:1px solid var(--rule);background:var(--pap
     </section>
   </main>
 </div>
-<p class="build">BUILD_TAG 2026-10-01a</p>
+<div class="player" id="player" hidden role="region" aria-label="読み上げ">
+  <div class="player-in">
+    <div class="player-now" id="playerNow"></div>
+    <div class="player-btns">
+      <button class="btn" id="ttsToggle">一時停止</button>
+      <button class="btn" id="ttsPrev" aria-label="前の話題">◀ 前</button>
+      <button class="btn" id="ttsNext" aria-label="次の話題">次 ▶</button>
+      <button class="btn sp" id="ttsRate" aria-label="読む速さ">速さ 1.0</button>
+      <button class="btn" id="ttsStop">終了</button>
+    </div>
+  </div>
+</div>
+<p class="build">BUILD_TAG 2026-11-11a</p>
 <script>
 document.documentElement.lang = "ja";
 const CATS = ["新モデル・研究","ツール・新機能","活用ノウハウ","SEO・検索・Web","開発・自動化","ビジネス・企業動向","規制・安全・社会"];
@@ -249,6 +278,96 @@ function markRead(id){ read.add(id); try { localStorage.setItem("read", JSON.str
 function dlabel(d){ const [y,m,dd] = String(d).split("-").map(Number); return { md: `${m}/${dd}`, w: WEEK[new Date(Date.UTC(y, m-1, dd)).getUTCDay()] }; }
 function hm(iso){ if(!iso) return ""; const m = String(iso).match(/T(\d{2}:\d{2})/); return m ? m[1] : ""; }
 function region(t){ return /_en$/.test(t) ? "海外" : "国内"; }
+
+/* ---------- 読み上げ（端末の音声合成。外部サービスは使わない） ---------- */
+const TTS = { ok: "speechSynthesis" in window && "SpeechSynthesisUtterance" in window, queue: [], idx: -1, chunks: [], ci: 0, playing: false, paused: false, token: 0, rate: 1, voice: null, lock: null };
+const RATES = [1, 1.2, 1.5, 1.8, 0.8];
+try { const r = parseFloat(localStorage.getItem("ttsRate")); if (RATES.includes(r)) TTS.rate = r; } catch {}
+function ttsVoice(){
+  if (!TTS.ok) return null;
+  const vs = speechSynthesis.getVoices().filter(v => /^ja/i.test(v.lang));
+  TTS.voice = vs.find(v => v.localService) || vs[0] || null;
+  return TTS.voice;
+}
+if (TTS.ok) { ttsVoice(); try { speechSynthesis.addEventListener("voiceschanged", ttsVoice); } catch {} }
+function ttsText(t){
+  const one = (t.items || [])[0] || {};
+  const lead = t.lead || t.summary || one.summary || "";
+  const points = (t.points && t.points.length) ? t.points : (!t.lead && (t.items || []).length < 2 ? (one.points || []) : []);
+  const title = t.title || one.title_ja || one.title || "";
+  const parts = [(t.prev && t.prev.date && !title.includes("続報") ? "続報。" : "") + title, lead];
+  if (t.avail) parts.push("いつ、誰が使えるか。" + t.avail);
+  points.forEach((p, i) => parts.push(`要点${i + 1}。${p}`));
+  if (t.why) parts.push("なぜ大事か。" + t.why);
+  if (t.biz && t.biz_tip) parts.push("業務メモ。" + t.biz_tip);
+  const out = [];
+  for (const p of parts) {
+    const txt = String(p || "").replace(/https?:\/\/\S+/g, "").replace(/[「」『』【】]/g, " ").trim();
+    if (!txt) continue;
+    for (const sen of (txt.match(/[^。！？!?\n]+[。！？!?]?/g) || [txt])) {
+      let x = sen.trim();
+      while (x.length > 140) { let cut = x.lastIndexOf("、", 140); if (cut < 40) cut = 140; out.push(x.slice(0, cut + 1)); x = x.slice(cut + 1); }
+      if (x) out.push(x);
+    }
+  }
+  return out;
+}
+function ttsUi(){
+  const on = TTS.playing;
+  $("player").hidden = !on; document.body.classList.toggle("has-player", on);
+  for (const c of document.querySelectorAll(".card.speaking")) c.classList.remove("speaking");
+  if (!on) return;
+  const t = TTS.queue[TTS.idx];
+  $("playerNow").innerHTML = `<b>${TTS.idx + 1}/${TTS.queue.length}</b>${esc(t ? (t.title || "") : "")}`;
+  $("ttsToggle").textContent = TTS.paused ? "再開" : "一時停止";
+  $("ttsRate").textContent = "速さ " + TTS.rate.toFixed(1);
+  $("ttsPrev").disabled = TTS.idx <= 0; $("ttsNext").disabled = TTS.idx >= TTS.queue.length - 1;
+  if (t) for (const c of document.querySelectorAll(".card")) if (c.dataset.id === t.id) c.classList.add("speaking");
+}
+function ttsSpeakChunk(){
+  const my = TTS.token;
+  if (!TTS.playing || TTS.paused) return;
+  if (TTS.ci >= TTS.chunks.length) {
+    const t = TTS.queue[TTS.idx];
+    if (t) { (t.items || []).forEach(i => markRead(i.id)); for (const c of document.querySelectorAll(".card")) if (c.dataset.id === t.id) c.classList.add("read"); }
+    if (TTS.idx < TTS.queue.length - 1) { setTimeout(() => { if (my === TTS.token) ttsGo(TTS.idx + 1, true); }, 500); } else ttsStop();
+    return;
+  }
+  const u = new SpeechSynthesisUtterance(TTS.chunks[TTS.ci]);
+  u.lang = "ja-JP"; u.rate = TTS.rate; const v = TTS.voice || ttsVoice(); if (v) u.voice = v;
+  u.onend = () => { if (my !== TTS.token) return; TTS.ci++; ttsSpeakChunk(); };
+  u.onerror = e => { if (my !== TTS.token) return; if (e.error === "interrupted" || e.error === "canceled") return; TTS.ci++; ttsSpeakChunk(); };
+  TTS.cur = u; // 参照を残す（途中で音声が切れる不具合の対策）
+  speechSynthesis.speak(u);
+}
+function ttsGo(i, scroll){
+  TTS.token++; speechSynthesis.cancel();
+  TTS.idx = i; TTS.ci = 0; TTS.paused = false; TTS.playing = true;
+  TTS.chunks = ttsText(TTS.queue[i] || {});
+  ttsUi();
+  if (scroll) { const el = document.querySelector(".card.speaking"); if (el && !el.closest("[hidden]")) el.scrollIntoView({ block: "center", behavior: "smooth" }); }
+  setTimeout(ttsSpeakChunk, 60);
+}
+function ttsStart(list, i){
+  if (!TTS.ok || !list.length) return;
+  TTS.queue = list; ttsGo(Math.max(0, i), false);
+  try { navigator.wakeLock?.request("screen").then(l => { TTS.lock = l; }).catch(() => {}); } catch {}
+}
+function ttsStop(){
+  TTS.token++; TTS.playing = false; TTS.paused = false; if (TTS.ok) speechSynthesis.cancel();
+  try { TTS.lock?.release(); } catch {} TTS.lock = null;
+  ttsUi();
+}
+function ttsToggle(){
+  if (!TTS.playing) return;
+  if (TTS.paused) { TTS.paused = false; TTS.token++; ttsUi(); ttsSpeakChunk(); }
+  else { TTS.paused = true; TTS.token++; speechSynthesis.cancel(); ttsUi(); } // 一時停止は「止めて、同じ文から読み直す」方式（iPhoneで再開できない不具合を避ける）
+}
+function ttsListFor(el){
+  if (el.closest("#savedList")) return Object.values(S.saved).sort((a,b) => String(b.savedAt).localeCompare(String(a.savedAt))).map(x => x.topic).filter(Boolean);
+  if (el.closest("#biz")) return S.topics.filter(t => t.biz).sort(sortTopics);
+  return filtered().sort(sortTopics);
+}
 
 /* ---------- 描画 ---------- */
 function renderTabs(tab){
@@ -285,7 +404,9 @@ function card(t, opts = {}){
   const lead = t.lead || t.summary || one.summary || "";
   const points = (t.points && t.points.length) ? t.points : (!t.lead && !multi ? (one.points || []) : []);
   const kinds = [...new Set(items.map(i => i.kind === "video" ? "動画" : region(i.src_type)))];
-  const head = `${t.category ? `<span class="tag">${esc(t.category)}</span>` : ""}${t.importance >= 3 ? `<span class="tag imp">重要</span>` : ""}` +
+  const pv = t.prev && t.prev.date ? t.prev : null;
+  const pvNote = pv ? `<p class="prevnote">${esc(dlabel(pv.date).md)}号の続きです。新しく分かったことだけをまとめています。${S.index.some(x => x.date === pv.date) && pv.date !== S.date ? ` <button class="linkbtn" data-date="${esc(pv.date)}">${esc(dlabel(pv.date).md)}号を見る</button>` : ""}</p>` : "";
+  const head = `${t.category ? `<span class="tag">${esc(t.category)}</span>` : ""}${t.importance >= 3 ? `<span class="tag imp">重要</span>` : ""}${pv ? `<span class="tag fu">続報</span>` : ""}` +
     `<span class="count">${multi ? `${items.length}件の情報をまとめ` : esc(one.src_name)}</span>` +
     `<span class="time">${opts.withDate && t.date ? esc(dlabel(t.date).md) + " " : ""}${esc(kinds.join("・"))}</span>`;
   const terms = (t.terms || []).filter(x => x && x[0]);
@@ -293,6 +414,7 @@ function card(t, opts = {}){
   return `<article class="card${multi ? " topic" : ""}${allRead ? " read" : ""}" data-id="${esc(t.id)}">
     <div class="meta">${head}</div>
     <h3>${esc(t.title || one.title_ja || one.title)}</h3>
+    ${pvNote}
     ${lead ? `<p class="lead">${esc(lead)}</p>` : ""}
     ${t.avail ? `<p class="avail${/不明|未発表|発表されていません|明らかにしていません/.test(t.avail) ? " unk" : ""}"><span class="lbl2">いつ・誰が使える？</span>${esc(t.avail)}</p>` : ""}
     ${points.length ? `<ul class="kp">${points.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
@@ -301,6 +423,7 @@ function card(t, opts = {}){
     ${t.biz && t.biz_tip ? `<p class="tip"><span class="lbl">業務メモ</span>${esc(t.biz_tip)}</p>` : ""}
     <div class="actions">
       <details class="srcs"><summary>出典 ${items.length}件</summary><ul>${srcList}</ul></details>
+      ${TTS.ok ? `<button class="btn" data-speak="${esc(t.id)}">▶ 読み上げ</button>` : ""}
       <button class="btn${saved?" on":""}" data-save="${esc(t.id)}" aria-pressed="${saved}">${saved ? "★ 保存済み" : "☆ 保存"}</button>
     </div>
   </article>`;
@@ -339,6 +462,7 @@ function renderPaper(){
   const list = filtered().sort(sortTopics);
   $("allN").textContent = `${list.length}件`;
   $("list").innerHTML = list.length ? list.map(t => card(t)).join("") : `<div class="empty"><h3>該当する話題がありません</h3>絞り込みを外すか、別のキーワードで探してください。</div>`;
+  if (TTS.playing) ttsUi();
 }
 function renderSaved(){
   const arr = Object.values(S.saved).sort((a,b) => String(b.savedAt).localeCompare(String(a.savedAt)));
@@ -360,7 +484,7 @@ function renderSources(){
 }
 
 /* ---------- データ ---------- */
-const BUILD_TAG = "2026-10-01a";
+const BUILD_TAG = "2026-11-11a";
 async function getJSON(path){
   const r = await fetch(path + (path.includes("?") ? "&" : "?") + "t=" + Date.now(), { cache: "no-store" });
   if (!r.ok) throw new Error(r.status);
@@ -371,11 +495,13 @@ function storeSaved(){ try { localStorage.setItem("saved", JSON.stringify(S.save
 
 /* ---------- 操作 ---------- */
 document.addEventListener("click", e => {
-  const t = e.target.closest("[data-tab],[data-date],[data-kind],[data-cat],[data-save],[data-open],[data-bizall]");
+  const t = e.target.closest("[data-tab],[data-date],[data-kind],[data-cat],[data-save],[data-open],[data-bizall],[data-speak],[data-speakall]");
   if (!t) return;
+  if (t.dataset.speak) { const l = ttsListFor(t); ttsStart(l, l.findIndex(x => x.id === t.dataset.speak)); return; }
+  if (t.dataset.speakall) { ttsStart(t.dataset.speakall === "biz" ? S.topics.filter(x => x.biz).sort(sortTopics) : filtered().sort(sortTopics), 0); return; }
   if (t.dataset.tab) { renderTabs(t.dataset.tab); window.scrollTo(0, 0); return; }
   if (t.dataset.bizall) { S.bizAll = true; renderPaper(); return; }
-  if (t.dataset.date) { selectDate(t.dataset.date); return; }
+  if (t.dataset.date) { selectDate(t.dataset.date); if (t.classList.contains("linkbtn")) window.scrollTo(0, 0); return; }
   if (t.dataset.kind) { S.kind = t.dataset.kind; renderPaper(); return; }
   if (t.dataset.cat) { S.cat = t.dataset.cat; renderPaper(); return; }
   if (t.dataset.open) { markRead(t.dataset.open); const c = t.closest(".srcs li"); if (c) c.classList.add("read"); return; }
@@ -383,6 +509,18 @@ document.addEventListener("click", e => {
 });
 let qTimer; $("q").addEventListener("input", e => { clearTimeout(qTimer); qTimer = setTimeout(() => { S.q = e.target.value; renderPaper(); }, 150); });
 $("reload").addEventListener("click", () => boot(true));
+$("ttsToggle").addEventListener("click", ttsToggle);
+$("ttsStop").addEventListener("click", ttsStop);
+$("ttsPrev").addEventListener("click", () => { if (TTS.idx > 0) ttsGo(TTS.idx - 1, true); });
+$("ttsNext").addEventListener("click", () => { if (TTS.idx < TTS.queue.length - 1) ttsGo(TTS.idx + 1, true); });
+$("ttsRate").addEventListener("click", () => {
+  TTS.rate = RATES[(RATES.indexOf(TTS.rate) + 1) % RATES.length];
+  try { localStorage.setItem("ttsRate", String(TTS.rate)); } catch {}
+  if (TTS.playing && !TTS.paused) { TTS.token++; speechSynthesis.cancel(); setTimeout(ttsSpeakChunk, 60); }
+  ttsUi();
+});
+if (TTS.ok) for (const b of document.querySelectorAll("[data-speakall]")) b.hidden = false;
+window.addEventListener("pagehide", () => { if (TTS.ok) speechSynthesis.cancel(); });
 
 function toggleSave(id){
   if (S.saved[id]) delete S.saved[id];

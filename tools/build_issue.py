@@ -1,4 +1,4 @@
-# AIトレンド朝刊 紙面組み立て ver2.3 (2026-10-01) 「いつ・誰が使える」欄を追加 — 同じ話題の記事をまとめ、元記事を読まなくて済む解説を付ける
+# AIトレンド朝刊 紙面組み立て ver2.4 (2026-11-11) 既報の話題を二重に載せない（続報 prev・既報の除外 --drop・同じ日の話題への追加 into）
 # 収集結果＋要約を、リポジトリの data/ に書き込む（issues・index・seen・status）。
 # 使い方:
 #   python3 tools/build_issue.py --out <collectorの出力dir> --enrich enrich_news.json --vsum vsum.json \
@@ -9,6 +9,9 @@
 # topics.json: [{"t":見出し,"lead":ひとことで(1〜2文),"points":[要点...],"why":なぜ大事か,"terms":[["用語","説明"]...],
 #                "avail":いつ・誰が使えるか(新しいツール・機能・モデルの話題だけ),"c":カテゴリ記号,"i":重要度,"b":業務メモ(任意),"news":[news.jsonの添字...],"videos":["video_id"...]}]
 #   どのトピックにも入らない記事は、その記事の要約だけの1件の話題になる。
+#   続報（過去の号で扱った話題に新しい事実が出た）は "prev":{"date":"YYYY-MM-DD","id":"過去の話題ID","title":"過去の見出し"} を付け、新しい事実だけを書く。
+#   同じ日の再実行で、すでに今日の号にある話題に出典を足すときは "into":"今日の話題ID" を付ける（lead などを書けば上書き、書かなければ出典だけ足す）。
+# drop.json（--drop）: {"news":[news.jsonの添字...],"videos":["video_id"...]}  過去の号で扱い済みで新しい事実がない記事・動画。紙面に載せず、掲載済み（seen）にだけ記録する。
 import argparse, json, os
 from datetime import datetime, timezone, timedelta
 
@@ -42,6 +45,7 @@ def main():
     ap.add_argument("--date", required=True)
     ap.add_argument("--repo", required=True)
     ap.add_argument("--note", default="")
+    ap.add_argument("--drop", default="")
     a = ap.parse_args()
 
     news = load(os.path.join(a.out, "news.json"), [])
@@ -52,10 +56,18 @@ def main():
     data = os.path.join(a.repo, "data")
     now = datetime.now(JST).isoformat(timespec="minutes")
 
+    drop = load(a.drop, {}) if a.drop else {}
+    drop_news = {str(k) for k in drop.get("news", [])}
+    drop_vid = set(drop.get("videos", []))
+    n_drop = 0
+
     items = []
     for i, x in enumerate(news):
         e = en.get(str(i))
         if not e:
+            continue
+        if str(i) in drop_news:
+            n_drop += 1
             continue
         items.append({"id": x["id"], "kind": "news", "src_id": x["src_id"], "src_name": x["src_name"],
                       "src_type": x["src_type"], "title": x["title"], "title_ja": e.get("t") or x["title"],
@@ -63,6 +75,9 @@ def main():
                       "summary": e.get("s", ""), "biz": bool(e.get("b")), "biz_tip": e.get("b", ""),
                       "importance": e.get("i", 2), "avail": e.get("a", ""), "via": "Claude"})
     for v in videos:
+        if v.get("video_id") in drop_vid:
+            n_drop += 1
+            continue
         s = vs.get(v.get("video_id"), {})
         items.append({"id": v["id"], "kind": "video", "src_id": v["src_id"], "src_name": v["src_name"],
                       "src_type": v["src_type"], "title": v["title"], "title_ja": s.get("title_ja") or v["title"],
@@ -76,7 +91,15 @@ def main():
     news_id = {i: x["id"] for i, x in enumerate(news)}
     vid_id = {v.get("video_id"): v["id"] for v in videos}
     kept = {i["id"] for i in items}
-    topics, used = [], set()
+    issue_path = os.path.join(data, "issues", f"{a.date}.json")
+    prev_doc = load(issue_path, {})
+    # 同じ日の再実行で話題IDが重ならないよう、既存の番号の続きから振る
+    base = 0
+    for pt in prev_doc.get("topics", []):
+        pid = str(pt.get("id", ""))
+        if pid.startswith("t" + a.date.replace("-", "")) and pid[9:].isdigit():
+            base = max(base, int(pid[9:]) + 1)
+    topics, used, into = [], set(), {}
     for n, t in enumerate(load(a.topics, []) if a.topics else []):
         ids = [news_id.get(int(k)) for k in t.get("news", [])] + [vid_id.get(k) for k in t.get("videos", [])]
         ids += t.get("item_ids", [])
@@ -84,24 +107,49 @@ def main():
         if not ids:
             continue
         used.update(ids)
-        topics.append({"id": f"t{a.date.replace('-', '')}{n:02d}", "title": t.get("t", ""), "summary": t.get("s", ""),
-                       "lead": t.get("lead") or t.get("s", ""), "avail": t.get("avail", ""), "points": t.get("points", []), "why": t.get("why", ""),
-                       "terms": t.get("terms", []),
-                       "category": CAT.get(t.get("c"), t.get("c")), "importance": t.get("i", 2),
-                       "biz": bool(t.get("b")), "biz_tip": t.get("b", ""), "item_ids": ids})
+        new = {"id": f"t{a.date.replace('-', '')}{base + n:02d}", "title": t.get("t", ""), "summary": t.get("s", ""),
+               "lead": t.get("lead") or t.get("s", ""), "avail": t.get("avail", ""), "points": t.get("points", []), "why": t.get("why", ""),
+               "terms": t.get("terms", []),
+               "category": CAT.get(t.get("c"), t.get("c")), "importance": t.get("i", 2),
+               "biz": bool(t.get("b")), "biz_tip": t.get("b", ""), "item_ids": ids}
+        pv = t.get("prev")
+        if isinstance(pv, dict) and pv.get("date"):
+            new["prev"] = {"date": pv.get("date"), "id": pv.get("id", ""), "title": pv.get("title", "")}
+        if t.get("into"):
+            into.setdefault(t["into"], []).append(new)
+        else:
+            topics.append(new)
 
     # 同じ日の再実行では既存の記事とトピックを残し、新しいもので上書き・追加する
-    issue_path = os.path.join(data, "issues", f"{a.date}.json")
-    prev_doc = load(issue_path, {})
     prev = prev_doc.get("items", [])
     have = {i["id"] for i in items}
     items += [p for p in prev if p.get("id") not in have]
     all_ids = {i["id"] for i in items}
     for pt in prev_doc.get("topics", []):
         ids = [x for x in pt.get("item_ids", []) if x in all_ids and x not in used]
-        if ids and not any(x in have for x in pt.get("item_ids", [])):
+        adds = into.pop(pt.get("id"), [])
+        if adds:
+            # 今日の号にすでにある話題へ、新しい出典（と書き直した解説）を足す
+            merged = {**pt}
+            for nw in adds:
+                for k in ("title", "lead", "avail", "why", "biz_tip"):
+                    if nw.get(k):
+                        merged[k] = nw[k]
+                if nw.get("points"):
+                    merged["points"] = nw["points"]
+                if nw.get("terms"):
+                    merged["terms"] = nw["terms"]
+                merged["importance"] = max(merged.get("importance", 2), nw.get("importance", 2))
+                merged["biz"] = bool(merged.get("biz_tip"))
+                ids += nw["item_ids"]
+            used.update(ids)
+            topics.append({**merged, "item_ids": ids})
+        elif ids and not any(x in have for x in pt.get("item_ids", [])):
             used.update(ids)
             topics.append({**pt, "item_ids": ids})
+    # into の先が見つからなかったものは、独立した話題として載せる
+    for adds in into.values():
+        topics.extend(adds)
     # どのトピックにも入らない記事は、1件だけのトピックにする
     for it in items:
         if it["id"] in used:
@@ -151,8 +199,8 @@ def main():
         if i["kind"] == "video":
             via[i["via"]] = via.get(i["via"], 0) + 1
     save(os.path.join(data, "status.json"), {"ranAt": report.get("ran_at", now), "sources": report.get("sources", []),
-                                             "videoVia": via, "note": a.note})
-    print(f"issue {a.date}: topics={len(topics)} news={n_news} videos={n_vid} biz={n_biz} removed={removed} video_via={via}")
+                                             "videoVia": via, "note": a.note, "dropped": n_drop})
+    print(f"issue {a.date}: dropped={n_drop} topics={len(topics)} news={n_news} videos={n_vid} biz={n_biz} removed={removed} video_via={via}")
 
 
 if __name__ == "__main__":
