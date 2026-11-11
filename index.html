@@ -223,6 +223,14 @@ form.add input,form.add select{border:1px solid var(--rule);background:var(--pap
 .player-btns .btn{padding:7px 12px;font-size:14px;white-space:nowrap}
 .player-btns .sp{margin-left:auto}
 body.has-player .wrap{padding-bottom:150px}
+.pd-ask{background:var(--sheet);border:1px solid var(--ai);border-radius:10px;padding:12px 14px;margin:10px 0 14px}
+.pd-ask label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+.pd-ask textarea{width:100%;box-sizing:border-box;border:1px solid var(--rule);border-radius:6px;background:var(--paper);color:var(--ink);font:inherit;font-size:14px;padding:8px;resize:vertical}
+.pd-go{margin-top:10px;width:100%;justify-content:center;padding:12px;font-size:15px;border-color:var(--ai);color:var(--ai);background:var(--ai-soft)}
+.pd-ask .note{margin:8px 0 0}
+.pd-ask.done{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;font-size:14px}
+.pd-ask.done small{color:var(--muted)}
+.pd-ask.done a{color:var(--ai)}
 .pd-main{margin:10px 0 4px;font-size:14px;line-height:1.6}
 .pd-main small{display:block;color:var(--muted);font-size:12px}
 .pd-sec{margin:18px 0 8px;font-family:var(--f-display);font-size:16px;letter-spacing:.04em}
@@ -281,7 +289,7 @@ body.has-player .wrap{padding-bottom:150px}
   <main id="view-posts" hidden>
     <section class="sec">
       <h2 class="sec-h">投稿の下書き<span class="sub" id="postsInfo"></span></h2>
-      <p class="note">その日の号から作った note と X の下書きです。「私の見立て」をご自分の言葉に直してから投稿してください。自動では投稿されません。</p>
+      <p class="note">その日の号から作った note と X の下書きです。読んで問題なければ「Claudeに投稿を頼む」を押し、開いたチャットに貼り付けて送ってください。入力と投稿は Claude が行います。</p>
       <div id="postsBody"></div>
     </section>
   </main>
@@ -310,7 +318,7 @@ body.has-player .wrap{padding-bottom:150px}
     </div>
   </div>
 </div>
-<p class="build">BUILD_TAG 2026-11-11c</p>
+<p class="build">BUILD_TAG 2026-11-11d</p>
 <script>
 document.documentElement.lang = "ja";
 const CATS = ["新モデル・研究","ツール・新機能","活用ノウハウ","SEO・検索・Web","開発・自動化","ビジネス・企業動向","規制・安全・社会"];
@@ -568,7 +576,11 @@ function renderPosts(){
   if (!p) { $("postsBody").innerHTML = `<div class="empty"><h3>この日の下書きはありません</h3>下書きは、朝刊が出たあとに作られます。</div>`; return; }
   S.copy = { title: p.note.title, body: p.note.body };
   (p.x || []).forEach((x, i) => S.copy["x" + i] = x.text);
-  $("postsBody").innerHTML =
+  const done = p.posted && (p.posted.note_url || (p.posted.x_urls || []).length);
+  const ask = done
+    ? `<div class="pd-ask done"><b>投稿済み</b>${p.posted.at ? `<small>${esc(String(p.posted.at).replace("T", " ").slice(0, 16))}</small>` : ""}${p.posted.note_url ? `<a href="${esc(p.posted.note_url)}" target="_blank" rel="noopener">note を開く ↗</a>` : ""}${(p.posted.x_urls || []).map((u, i) => `<a href="${esc(u)}" target="_blank" rel="noopener">X ${i + 1}本目を開く ↗</a>`).join("")}</div>`
+    : `<div class="pd-ask"><label for="pdMemo">直したい点（あれば。空のままでよい）</label><textarea id="pdMemo" rows="3" placeholder="例：見立ての2段落目を「〜」に変えて"></textarea><button class="btn pd-go" data-askpost="1">Claudeに投稿を頼む</button><p class="note" id="pdAskNote">押すと、依頼文をコピーして Claude のチャットを開きます。貼り付けて送るだけです。</p></div>`;
+  $("postsBody").innerHTML = ask +
     `<p class="pd-main">今日の1本：${esc(p.main_title || "")}${p.updatedAt ? `<small>作成 ${esc(hm(p.updatedAt))}</small>` : ""}</p>` +
     `<h3 class="pd-sec">note</h3>` + postBox("title", "タイトル", p.note.title, `${p.note.title.length}字`) + postBox("body", "本文", p.note.body, `${p.note.body.length}字`) +
     `<h3 class="pd-sec">X</h3>` + (p.x || []).map((x, i) => postBox("x" + i, x.label || `${i + 1}本目`, x.text, x.len ? `${x.len}字相当` : "")).join("");
@@ -577,6 +589,27 @@ async function loadPosts(){
   const d = S.date; if (!d) { renderPosts(); return; }
   if (S.posts[d] === undefined) { renderPosts(); try { S.posts[d] = await getJSON(`data/posts/${d}.json`); } catch { S.posts[d] = null; } }
   if (S.date === d) renderPosts();
+}
+const CLAUDE_PROJECT_URL = "https://claude.ai/project/01a1c7ac-c143-7390-a3dd-3ac7a53d7a62";
+function askText(){
+  const d = S.date, p = S.posts[d] || {};
+  const memo = ($("pdMemo") ? $("pdMemo").value : "").trim();
+  return `AI朝刊の投稿をお願いします（${d}号）。\n` +
+    `下書きは確認しました。${memo ? "次の点を直してから" : "このまま"} note と X に投稿してください。\n` +
+    (memo ? `直したい点：${memo}\n` : "") +
+    `今日の1本：${p.main_title || ""}\n` +
+    `下書き：https://ai-choukan.vercel.app/data/posts/${d}.json\n` +
+    `手順：スキル ai-choukan-ops と、リポジトリ taka-a1111/ai-choukan の tools/POSTS_GUIDE.md「7. 投稿の手順」`;
+}
+async function askPost(btn){
+  const text = askText(); let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; } catch {
+    try { const ta = document.createElement("textarea"); ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0"; document.body.appendChild(ta); ta.select(); ok = document.execCommand("copy"); ta.remove(); } catch {}
+  }
+  if (!ok) { $("pdAskNote").textContent = "コピーできませんでした。もう一度押してください。"; return; }
+  btn.textContent = "コピーしました。Claudeを開きます";
+  $("pdAskNote").textContent = "Claude のチャットが開いたら、入力欄に貼り付けて送ってください。";
+  setTimeout(() => { btn.textContent = "Claudeに投稿を頼む"; window.location.href = CLAUDE_PROJECT_URL; }, 500);
 }
 async function copyText(btn, text){
   let ok = false;
@@ -587,7 +620,7 @@ async function copyText(btn, text){
 }
 
 /* ---------- データ ---------- */
-const BUILD_TAG = "2026-11-11c";
+const BUILD_TAG = "2026-11-11d";
 async function getJSON(path){
   const r = await fetch(path + (path.includes("?") ? "&" : "?") + "t=" + Date.now(), { cache: "no-store" });
   if (!r.ok) throw new Error(r.status);
@@ -598,8 +631,9 @@ function storeSaved(){ try { localStorage.setItem("saved", JSON.stringify(S.save
 
 /* ---------- 操作 ---------- */
 document.addEventListener("click", e => {
-  const t = e.target.closest("[data-tab],[data-date],[data-kind],[data-cat],[data-save],[data-open],[data-bizall],[data-speak],[data-speakall],[data-copy]");
+  const t = e.target.closest("[data-tab],[data-date],[data-kind],[data-cat],[data-save],[data-open],[data-bizall],[data-speak],[data-speakall],[data-copy],[data-askpost]");
   if (!t) return;
+  if (t.dataset.askpost) { askPost(t); return; }
   if (t.dataset.copy) { copyText(t, (S.copy || {})[t.dataset.copy] || ""); return; }
   if (t.dataset.speak) { const l = ttsListFor(t); ttsStart(l, l.findIndex(x => x.id === t.dataset.speak)); return; }
   if (t.dataset.speakall) { ttsStart(t.dataset.speakall === "biz" ? S.topics.filter(x => x.biz).sort(sortTopics) : filtered().sort(sortTopics), 0); return; }

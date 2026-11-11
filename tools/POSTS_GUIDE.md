@@ -1,7 +1,8 @@
-# 投稿下書きの書き方（note・X） ver1.0 (2026-11-11)
+# 投稿下書きの書き方と投稿の手順（note・X） ver1.1 (2026-11-11)
 
 AIトレンド朝刊のその日の号から、note と X の下書きを作るときの決まり。
-下書きはアプリの「投稿」タブに出る。投稿するのは、高崎さんが確認してから。自動では投稿しない。
+下書きはアプリの「投稿」タブに出る。高崎さんが読んで「Claudeに投稿を頼む」を押すと、依頼文がコピーされて Claude のプロジェクト「AI朝刊」が開く。高崎さんがそれを貼り付けて送ったら、Claude が note と X に入力して投稿する（第7章）。
+依頼が来ていない日は投稿しない。自動では投稿しない。
 
 ## 1. だれに向けて書くか
 
@@ -40,7 +41,7 @@ AIトレンド朝刊のその日の号から、note と X の下書きを作る�
 ## 4. X の型
 
 - 2本作る
-  - 1本目：main を3つの箇条書きで。最後に「くわしくは note に」の1文（URLは入れない。高崎さんが投稿後に足す）
+  - 1本目：main を3つの箇条書きで。最後に「くわしくは note に」の1文（URLは入れない。投稿のときに Claude が note のURLを足す）
   - 2本目：「今日のAIニュース、Web担当者向けに3つだけ。」で始め、main と others から3つを番号つきで
 - 全角140字まで（tools/build_posts.py が数える）
 - ハッシュタグは付けない。絵文字は使わない
@@ -65,3 +66,41 @@ AIトレンド朝刊のその日の号から、note と X の下書きを作る�
 5. git add data/posts → コミット「投稿下書き D」→ push（--force はしない）
 6. 約90秒後に https://ai-choukan.vercel.app/data/posts/D.json が読めるかを確かめる
 7. 報告：main の見出し、others の見出し、note の字数、X の本数
+
+## 7. 投稿の手順（高崎さんから「AI朝刊の投稿をお願いします（D号）」と来たとき）
+
+依頼文が、その日の投稿への了承になる。了承は D 号の下書きの分だけ。別の日の分や、下書きにない内容は投稿しない。
+入力はすべて Claude が行う。高崎さんにコピーや貼り付けを頼まない。
+
+### 7-0. 準備
+- ブラウザは Claude in Chrome（CIC）を使う。スキル chrome-browser・note-editor-ops・cic-login-handoff を読む
+- リポジトリを add_repo（owner taka-a1111、repo ai-choukan、access push）で取り、data/posts/D.json を読む。posted に note_url があれば投稿済みなので、二重に投稿せず、そう伝える
+- アカウントを確かめる。note は https://note.com/api/v2/current_user の urlname が infosuccess_jp、X は左下の表示が @infosuccess_jp。ナンパ部など別のアカウントだったら何も入力せず、cic-login-handoff の形で切り替えを頼む
+- PC・Chrome につながらないときは、入力せずに「PCのChromeを開いてから、もう一度送ってください」と伝える
+
+### 7-1. 直したい点があるとき
+依頼文に「直したい点」があれば、先に posts.json を直して tools/build_posts.py で組み立て直し、push する（第6章）。事実を足す直しは、号の解説にあるものだけ。直した文面を高崎さんに見せ、「これで投稿します」と伝えてから先へ進む（返事は待たなくてよい。直しの中身が依頼とずれそうなときだけ確かめる）。
+
+### 7-2. note
+1. python3 tools/note_html.py --date D --repo <リポジトリ> --out note_payload.json で、タイトルと本文のHTMLを作る
+2. 同じタイトルの下書きがすでにあれば（https://note.com/api/v2/creators/infosuccess_jp/contents?kind=note や下書き一覧で確かめる）、新しく作らずにそれを開く。無ければ https://note.com/notes/new を開く
+3. タイトルは textarea（記事タイトル）に value の setter と input イベントで入れる。本文は .ProseMirror の全体を選択し、text/html の paste イベントで入れる（note-editor-ops 第4章）
+4. 入れたあと、.ProseMirror の子要素の並び（H2,UL,P…）が note_payload.json の blocks と同じかを確かめる
+5. 見出し画像：紺色（#00243F）の地に記事タイトルとロゴマークを置いた 1280×670 の画像を Playwright で作り、見出し画像のボタンから入れる（note-editor-ops 第5章。日本語フォントを指定し、グラデーションは使わない）
+6. 「下書き保存」→「公開に進む」。ハッシュタグは「AI」「AIニュース」と、話題に合うものを1〜2個（例：ChatGPT、SEO）。記事タイプは無料
+7. 「投稿する」を押す。安全機能で押せないときだけ、cic-login-handoff の形で高崎さんに押してもらう
+8. 公開ページ https://note.com/infosuccess_jp/n/（key）を開き、タイトル・見出し・出典のリンクが出ているかを確かめる
+
+### 7-3. X
+1. 1本目の文の末尾に、改行して note の公開URLを足す（URLは23字として数える。全角140字相当を超えるなら、最後の1文を短くする）
+2. https://x.com/compose/post で本文を text/plain の paste で入れ、投稿する（note-editor-ops 第8章）
+3. 2本目（今日の3つ）は、1本目のあと3分以上あけて投稿する。末尾に note のURLを足す
+4. 投稿した2本のURLを控える
+
+### 7-4. 記録と報告
+1. python3 tools/mark_posted.py --date D --repo <リポジトリ> --note-url <URL> --x-url <1本目> --x-url <2本目>
+2. git add data/posts → コミット「投稿済み D」→ push
+3. 高崎さんに短く報告：note のURL、X の2本のURL（URLは1行に単独で）、直した点があればその内容
+
+### 7-5. 途中で止まったとき
+どこまで終わったか（noteは下書きまで、Xは未投稿 など）と、止まった理由をそのまま伝える。投稿できた分は mark_posted.py で記録しておく（次に頼まれたとき、二重に投稿しないため）。

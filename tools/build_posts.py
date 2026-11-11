@@ -1,4 +1,4 @@
-# AIトレンド朝刊 投稿下書きの組み立て ver1.0 (2026-11-11) note・Xの下書きを検査して data/posts/ に書く
+# AIトレンド朝刊 投稿下書きの組み立て ver1.1 (2026-11-11) note・Xの下書きを検査して data/posts/ に書く（作り直しても投稿済みの記録は残す）
 # 書き方の決まりは tools/POSTS_GUIDE.md。
 # 使い方:
 #   python3 tools/build_posts.py --posts posts.json --date YYYY-MM-DD --repo <リポジトリのdir>
@@ -152,6 +152,14 @@ def main():
            "x": [{"label": str(x.get("label") or f"{i + 1}本目"), "text": str(x["text"]), "len": round(x_len(x["text"]) / 2)} for i, x in enumerate(xs)]}
     d = os.path.join(a.repo, "data", "posts")
     os.makedirs(d, exist_ok=True)
+    old = os.path.join(d, f"{a.date}.json")
+    if os.path.exists(old):  # 投稿済みの記録は残す
+        try:
+            posted = json.load(open(old, encoding="utf-8")).get("posted")
+            if posted:
+                out["posted"] = posted
+        except Exception:
+            pass
     json.dump(out, open(os.path.join(d, f"{a.date}.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     limit = (now - timedelta(days=KEEP_DAYS)).strftime("%Y-%m-%d")
     for f in os.listdir(d):
