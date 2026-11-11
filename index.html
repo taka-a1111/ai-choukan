@@ -223,6 +223,13 @@ form.add input,form.add select{border:1px solid var(--rule);background:var(--pap
 .player-btns .btn{padding:7px 12px;font-size:14px;white-space:nowrap}
 .player-btns .sp{margin-left:auto}
 body.has-player .wrap{padding-bottom:150px}
+.pd-main{margin:10px 0 4px;font-size:14px;line-height:1.6}
+.pd-main small{display:block;color:var(--muted);font-size:12px}
+.pd-sec{margin:18px 0 8px;font-family:var(--f-display);font-size:16px;letter-spacing:.04em}
+.card.pd{margin-bottom:10px}
+.pd-h{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:13px}
+.pd-h .btn{margin-left:auto;padding:6px 12px}
+.pd-t{white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.75}
 </style>
 
 <style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)} body{margin:0} [hidden]{display:none!important} img{max-width:100%}</style>
@@ -237,6 +244,7 @@ body.has-player .wrap{padding-bottom:150px}
     <nav class="tabs" role="tablist">
       <button class="tab" role="tab" id="tab-paper" aria-selected="true" data-tab="paper">紙面</button>
       <button class="tab" role="tab" id="tab-saved" aria-selected="false" data-tab="saved">保存<span class="n" id="savedN"></span></button>
+      <button class="tab" role="tab" id="tab-posts" aria-selected="false" data-tab="posts">投稿</button>
       <button class="tab" role="tab" id="tab-sources" aria-selected="false" data-tab="sources">情報源</button>
     </nav>
   </header>
@@ -270,6 +278,14 @@ body.has-player .wrap{padding-bottom:150px}
     </section>
   </main>
 
+  <main id="view-posts" hidden>
+    <section class="sec">
+      <h2 class="sec-h">投稿の下書き<span class="sub" id="postsInfo"></span></h2>
+      <p class="note">その日の号から作った note と X の下書きです。「私の見立て」をご自分の言葉に直してから投稿してください。自動では投稿されません。</p>
+      <div id="postsBody"></div>
+    </section>
+  </main>
+
   <main id="view-sources" hidden>
     <section class="sec">
       <h2 class="sec-h">情報源<span class="sub" id="runInfo"></span></h2>
@@ -294,7 +310,7 @@ body.has-player .wrap{padding-bottom:150px}
     </div>
   </div>
 </div>
-<p class="build">BUILD_TAG 2026-11-11b</p>
+<p class="build">BUILD_TAG 2026-11-11c</p>
 <script>
 document.documentElement.lang = "ja";
 const CATS = ["新モデル・研究","ツール・新機能","活用ノウハウ","SEO・検索・Web","開発・自動化","ビジネス・企業動向","規制・安全・社会"];
@@ -402,7 +418,8 @@ function ttsListFor(el){
 /* ---------- 描画 ---------- */
 function renderTabs(tab){
   for (const b of document.querySelectorAll(".tab")) b.setAttribute("aria-selected", String(b.dataset.tab === tab));
-  $("view-paper").hidden = tab !== "paper"; $("view-saved").hidden = tab !== "saved"; $("view-sources").hidden = tab !== "sources";
+  $("view-paper").hidden = tab !== "paper"; $("view-saved").hidden = tab !== "saved"; $("view-sources").hidden = tab !== "sources"; $("view-posts").hidden = tab !== "posts";
+  if (tab === "posts") loadPosts();
   try { localStorage.setItem("tab", tab); } catch {}
 }
 function renderDates(){
@@ -540,8 +557,37 @@ function renderSources(){
       <span class="state${s.enabled===false?" off":""}">${s.enabled===false?"停止中":"収集中"}</span></div>`; }).join("")}</div>`).join("");
 }
 
+/* ---------- 投稿の下書き（data/posts/日付.json。無い日は案内だけ出す） ---------- */
+function postBox(key, label, text, meta){
+  return `<article class="card pd"><div class="pd-h"><b>${esc(label)}</b>${meta ? `<span class="count">${esc(meta)}</span>` : ""}<button class="btn" data-copy="${esc(key)}">コピー</button></div><div class="pd-t">${esc(text)}</div></article>`;
+}
+function renderPosts(){
+  const d = S.date, p = S.posts[d];
+  $("postsInfo").textContent = d ? `${dlabel(d).md}号` : "";
+  if (p === undefined) { $("postsBody").innerHTML = `<div class="empty"><h3>下書きを読み込んでいます</h3></div>`; return; }
+  if (!p) { $("postsBody").innerHTML = `<div class="empty"><h3>この日の下書きはありません</h3>下書きは、朝刊が出たあとに作られます。</div>`; return; }
+  S.copy = { title: p.note.title, body: p.note.body };
+  (p.x || []).forEach((x, i) => S.copy["x" + i] = x.text);
+  $("postsBody").innerHTML =
+    `<p class="pd-main">今日の1本：${esc(p.main_title || "")}${p.updatedAt ? `<small>作成 ${esc(hm(p.updatedAt))}</small>` : ""}</p>` +
+    `<h3 class="pd-sec">note</h3>` + postBox("title", "タイトル", p.note.title, `${p.note.title.length}字`) + postBox("body", "本文", p.note.body, `${p.note.body.length}字`) +
+    `<h3 class="pd-sec">X</h3>` + (p.x || []).map((x, i) => postBox("x" + i, x.label || `${i + 1}本目`, x.text, x.len ? `${x.len}字相当` : "")).join("");
+}
+async function loadPosts(){
+  const d = S.date; if (!d) { renderPosts(); return; }
+  if (S.posts[d] === undefined) { renderPosts(); try { S.posts[d] = await getJSON(`data/posts/${d}.json`); } catch { S.posts[d] = null; } }
+  if (S.date === d) renderPosts();
+}
+async function copyText(btn, text){
+  let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; } catch {
+    try { const ta = document.createElement("textarea"); ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0"; document.body.appendChild(ta); ta.select(); ok = document.execCommand("copy"); ta.remove(); } catch {}
+  }
+  btn.textContent = ok ? "コピーしました" : "コピーできませんでした"; setTimeout(() => { btn.textContent = "コピー"; }, 1600);
+}
+
 /* ---------- データ ---------- */
-const BUILD_TAG = "2026-11-11b";
+const BUILD_TAG = "2026-11-11c";
 async function getJSON(path){
   const r = await fetch(path + (path.includes("?") ? "&" : "?") + "t=" + Date.now(), { cache: "no-store" });
   if (!r.ok) throw new Error(r.status);
@@ -552,8 +598,9 @@ function storeSaved(){ try { localStorage.setItem("saved", JSON.stringify(S.save
 
 /* ---------- 操作 ---------- */
 document.addEventListener("click", e => {
-  const t = e.target.closest("[data-tab],[data-date],[data-kind],[data-cat],[data-save],[data-open],[data-bizall],[data-speak],[data-speakall]");
+  const t = e.target.closest("[data-tab],[data-date],[data-kind],[data-cat],[data-save],[data-open],[data-bizall],[data-speak],[data-speakall],[data-copy]");
   if (!t) return;
+  if (t.dataset.copy) { copyText(t, (S.copy || {})[t.dataset.copy] || ""); return; }
   if (t.dataset.speak) { const l = ttsListFor(t); ttsStart(l, l.findIndex(x => x.id === t.dataset.speak)); return; }
   if (t.dataset.speakall) { ttsStart(t.dataset.speakall === "biz" ? S.topics.filter(x => x.biz).sort(sortTopics) : filtered().sort(sortTopics), 0); return; }
   if (t.dataset.tab) { renderTabs(t.dataset.tab); window.scrollTo(0, 0); return; }
@@ -603,6 +650,7 @@ async function selectDate(d){
   const cached = S.cache[d];
   S.topics = cached || [];
   renderPaper();
+  if (!$("view-posts").hidden) loadPosts();
   if (cached) return;
   try {
     const doc = await getJSON(`data/issues/${d}.json`);
@@ -613,7 +661,7 @@ async function selectDate(d){
 
 async function boot(force){
   const btn = $("reload"); btn.disabled = true; btn.textContent = "読込中";
-  if (force) S.cache = {};
+  if (force) { S.cache = {}; S.posts = {}; }
   try {
     const idx = await getJSON("data/index.json");
     S.db = true;
@@ -627,7 +675,7 @@ async function boot(force){
 }
 
 /* ---------- 起動 ---------- */
-S.cache = {};
+S.cache = {}; S.posts = {};
 loadSaved();
 { let tab = "paper"; try { tab = localStorage.getItem("tab") || "paper"; } catch {} renderTabs(tab); }
 renderSaved(); renderSources(); boot(false);
