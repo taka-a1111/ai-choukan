@@ -1,14 +1,16 @@
-# AIトレンド朝刊 投稿下書きの組み立て ver1.1 (2026-11-11) note・Xの下書きを検査して data/posts/ に書く（作り直しても投稿済みの記録は残す）
+# AIトレンド朝刊 投稿下書きの組み立て ver1.2 (2026-11-11) note・Xの下書き（Xは朝1本・夜2本）を検査して data/posts/ に書く（作り直しても投稿済みの記録は残す）
 # 書き方の決まりは tools/POSTS_GUIDE.md。
 # 使い方:
 #   python3 tools/build_posts.py --posts posts.json --date YYYY-MM-DD --repo <リポジトリのdir>
 # posts.json:
 #   {"main": "今日の1本の話題ID", "others": ["ほか3本の話題ID", ...],
 #    "note": {"title": "記事タイトル", "body": "本文（見出しは行頭に ## ）"},
-#    "x": [{"label": "1本目", "text": "投稿文"}, {"label": "今日の3つ", "text": "投稿文"}],
+#    "x_topics": ["X の夜の1本だけで扱う話題ID（note に載せない話題。無ければ省く）"],
+#    "x": [{"label": "朝の1本", "at": "朝", "text": "投稿文"}, {"label": "夜の1本", "at": "19:00", "text": "投稿文"},
+#          {"label": "今日の3つ", "at": "21:00", "text": "投稿文"}],
 #    "ok_numbers": ["本文にあって号の解説にない数字のうち、確かめたうえで通すもの（例: 手順の番号ではない数字）"]}
 # 検査（1つでも外れると書き込まずに終わる。終了コード1）:
-#   - main・others の話題IDが、その日の号にあること
+#   - main・others・x_topics の話題IDが、その日の号にあること
 #   - 出典のURLが、選んだ話題の出典にあること（号にないURLを書かない）
 #   - 本文・投稿文の数字（2桁以上、または ％・倍・円・ドル・人・件・社 などが付く数字）が、選んだ話題の解説にあること
 #   - Xの投稿文が全角140字相当（半角は0.5字、URLは11.5字）に収まること
@@ -97,7 +99,7 @@ def main():
                                            "biz_tip": i.get("biz_tip"), "item_ids": [i["id"]]})
 
     errs = []
-    picks = [P.get("main")] + list(P.get("others") or [])
+    picks = [P.get("main")] + list(P.get("others") or []) + list(P.get("x_topics") or [])
     for k in picks:
         if k not in topics:
             errs.append(f"話題ID {k} がこの号にありません")
@@ -149,7 +151,10 @@ def main():
            "main": P["main"], "others": list(P.get("others") or []),
            "main_title": topics[P["main"]].get("title"),
            "note": {"title": title, "body": body},
-           "x": [{"label": str(x.get("label") or f"{i + 1}本目"), "text": str(x["text"]), "len": round(x_len(x["text"]) / 2)} for i, x in enumerate(xs)]}
+           "x": [dict({"label": str(x.get("label") or f"{i + 1}本目"), "text": str(x["text"]), "len": round(x_len(x["text"]) / 2)},
+                      **({"at": str(x["at"])} if x.get("at") else {})) for i, x in enumerate(xs)]}
+    if P.get("x_topics"):
+        out["x_topics"] = list(P["x_topics"])
     d = os.path.join(a.repo, "data", "posts")
     os.makedirs(d, exist_ok=True)
     old = os.path.join(d, f"{a.date}.json")
