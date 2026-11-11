@@ -23,7 +23,7 @@ import argparse, json, os, re, sys, unicodedata
 from datetime import datetime, timezone, timedelta
 
 JST = timezone(timedelta(hours=9))
-CTA_URLS = {"https://sukizero.com"}  # 本文に毎回載せてよい窓口（スキゼロの無料診断）
+CTA_URLS = {"https://sukizero.com", "https://infosuccess.jp"}  # 本文に毎回載せてよい窓口（スキゼロの無料診断、インフォサクセスのサイト）
 KEEP_DAYS = 60
 URL_RE = re.compile(r"https?://[^\s）)」】]+")
 NUM_RE = re.compile(r"\d[\d,]*(?:\.\d+)?")
