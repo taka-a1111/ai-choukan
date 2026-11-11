@@ -1,4 +1,4 @@
-# AIトレンド朝刊 投稿下書きの組み立て ver1.2 (2026-11-11) note・Xの下書き（Xは朝1本・夜2本）を検査して data/posts/ に書く（作り直しても投稿済みの記録は残す）
+# AIトレンド朝刊 投稿下書きの組み立て ver1.3 (2026-11-12) note・Xの下書き（Xは朝1本・夜2本、画像の指示、セルフチェック）を検査して data/posts/ に書く（作り直しても投稿済みの記録は残す）
 # 書き方の決まりは tools/POSTS_GUIDE.md。
 # 使い方:
 #   python3 tools/build_posts.py --posts posts.json --date YYYY-MM-DD --repo <リポジトリのdir>
@@ -8,10 +8,13 @@
 #    "x_topics": ["X の夜の1本だけで扱う話題ID（note に載せない話題。無ければ省く）"],
 #    "x": [{"label": "朝の1本", "at": "朝", "text": "投稿文"}, {"label": "夜の1本", "at": "19:00", "text": "投稿文"},
 #          {"label": "今日の3つ", "at": "21:00", "text": "投稿文"}],
+#    "images": {"eyecatch": {...}, "figs": [{"id": "fig1", "after": "## 概要", ...}], "xfig": {...}}（形は tools/img_prompt.py の先頭）,
 #    "ok_numbers": ["本文にあって号の解説にない数字のうち、確かめたうえで通すもの（例: 手順の番号ではない数字）"]}
 # 検査（1つでも外れると書き込まずに終わる。終了コード1）:
 #   - main・others・x_topics の話題IDが、その日の号にあること
-#   - 出典のURLが、選んだ話題の出典にあること（号にないURLを書かない）
+#   - 出典のURLが、選んだ話題の出典にあること（号にないURLを書かない。決まった窓口のURL（CTA_URLS）は除く）
+#   - images の文言の数字も同じ検査。図の置き場所（after）の見出しが本文にあること、図は2枚まで
+#   - 本文に「## 30秒セルフチェック」があること
 #   - 本文・投稿文の数字（2桁以上、または ％・倍・円・ドル・人・件・社 などが付く数字）が、選んだ話題の解説にあること
 #   - Xの投稿文が全角140字相当（半角は0.5字、URLは11.5字）に収まること
 #   - 太字記号（**）がないこと、タイトルが60字以内、本文が600〜3000字
@@ -20,6 +23,7 @@ import argparse, json, os, re, sys, unicodedata
 from datetime import datetime, timezone, timedelta
 
 JST = timezone(timedelta(hours=9))
+CTA_URLS = {"https://sukizero.com"}  # 本文に毎回載せてよい窓口（スキゼロの無料診断）
 KEEP_DAYS = 60
 URL_RE = re.compile(r"https?://[^\s）)」】]+")
 NUM_RE = re.compile(r"\d[\d,]*(?:\.\d+)?")
@@ -69,8 +73,10 @@ def numbers_in(text):
             continue  # 日付（11/11）
         big = len(digits.replace(".", "")) >= 2
         unit = bool(UNIT_RE.match(tail))
-        if tail.startswith("秒まとめ"):
-            continue  # 決まった見出し「30秒まとめ」
+        if tail.startswith("秒まとめ") or tail.startswith("秒セルフ"):
+            continue  # 決まった見出し「30秒まとめ」「30秒セルフチェック」
+        if re.match(r"^\s*(?:個|つ)", tail) and len(digits) == 1 and int(digits) <= 5:
+            continue  # セルフチェックの「当てはまるのが2個」など
         if re.match(r"^\s*(?:つ|本だけ|行|\.)", tail) and not big:
             continue
         if big or (unit and not re.match(r"^\s*(?:つ|本)", tail) and digits not in ("1", "2", "3")):
@@ -120,12 +126,36 @@ def main():
         errs.append(f"本文が{len(body)}字（600〜3000字）")
     if not xs:
         errs.append("x の投稿文がありません")
-    alltext = [("note", title + "\n" + body)] + [(f"x[{i}]", str(x.get("text") or "")) for i, x in enumerate(xs)]
+    imgs = P.get("images") or {}
+    img_texts = []
+    if imgs.get("eyecatch"):
+        e = imgs["eyecatch"]
+        img_texts.append(("images.eyecatch", " ".join([e.get("head1", ""), e.get("head2", ""), e.get("sub", "")] + list(e.get("labels") or []))))
+        for k in ("head1", "head2", "blue", "sub", "struct"):
+            if not e.get(k):
+                errs.append(f"images.eyecatch: {k} がありません")
+        if e.get("blue") and e["blue"] not in (e.get("head1", "") + e.get("head2", "")):
+            errs.append("images.eyecatch: blue（青にする語）が主見出しにありません")
+    figs = list(imgs.get("figs") or [])
+    if len(figs) > 2:
+        errs.append(f"images.figs が{len(figs)}枚（note の図解は2枚まで）")
+    heads = [l.strip() for l in body.split("\n") if l.startswith("## ")]
+    for f in figs + ([dict(imgs["xfig"], id="xfig", after="-")] if imgs.get("xfig") else []):
+        name = f"images.{f.get('id')}"
+        for k in ("id", "title", "texts", "note", "struct", "alt"):
+            if not f.get(k):
+                errs.append(f"{name}: {k} がありません")
+        if f.get("after") != "-" and f.get("after") not in heads:
+            errs.append(f"{name}: 置き場所 {f.get('after')} の見出しが本文にありません")
+        img_texts.append((name, " ".join([str(f.get("title", "")), str(f.get("note", ""))] + [str(t) for t in f.get("texts") or []])))
+    if "## 30秒セルフチェック" not in body:
+        errs.append("本文に「## 30秒セルフチェック」がありません")
+    alltext = [("note", title + "\n" + body)] + [(f"x[{i}]", str(x.get("text") or "")) for i, x in enumerate(xs)] + img_texts
     for name, text in alltext:
         if "**" in text:
             errs.append(f"{name}: 太字記号（**）があります")
         for u in URL_RE.findall(text):
-            if u.split("?")[0].rstrip("/") not in allowed_urls:
+            if u.split("?")[0].rstrip("/") not in allowed_urls and u.split("?")[0].rstrip("/") not in CTA_URLS:
                 errs.append(f"{name}: 号の出典にないURL {u}")
         ok = set(str(n) for n in (P.get("ok_numbers") or []))
         for n in numbers_in(text):
@@ -155,6 +185,8 @@ def main():
                       **({"at": str(x["at"])} if x.get("at") else {})) for i, x in enumerate(xs)]}
     if P.get("x_topics"):
         out["x_topics"] = list(P["x_topics"])
+    if imgs:
+        out["images"] = imgs
     d = os.path.join(a.repo, "data", "posts")
     os.makedirs(d, exist_ok=True)
     old = os.path.join(d, f"{a.date}.json")
