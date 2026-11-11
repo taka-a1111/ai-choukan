@@ -1,4 +1,4 @@
-# 投稿下書きの書き方と投稿の手順（note・X） ver1.2 (2026-11-11)
+# 投稿下書きの書き方と投稿の手順（note・X） ver1.3 (2026-11-11)
 
 AIトレンド朝刊のその日の号から、note と X の下書きを作るときの決まり。
 下書きはアプリの「投稿」タブに出る。高崎さんが読んで「Claudeに投稿を頼む」を押すと、依頼文がコピーされて Claude のプロジェクト「AI朝刊」が開く。高崎さんがそれを貼り付けて送ったら、Claude が note と X に入力して投稿する（第7章）。
@@ -86,7 +86,7 @@ AIトレンド朝刊のその日の号から、note と X の下書きを作る�
 2. 同じタイトルの下書きがすでにあれば（https://note.com/api/v2/creators/infosuccess_jp/contents?kind=note や下書き一覧で確かめる）、新しく作らずにそれを開く。無ければ https://note.com/notes/new を開く
 3. タイトルは textarea（記事タイトル）に value の setter と input イベントで入れる。本文は .ProseMirror の全体を選択し、text/html の paste イベントで入れる（note-editor-ops 第4章）
 4. 入れたあと、.ProseMirror の子要素の並び（H2,UL,P…）が note_payload.json の blocks と同じかを確かめる
-5. 見出し画像：紺色（#00243F）の地に記事タイトルとロゴマークを置いた 1280×670 の画像を Playwright で作り、見出し画像のボタンから入れる（note-editor-ops 第5章。日本語フォントを指定し、グラデーションは使わない）
+5. 見出し画像：PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers python3 tools/note_eyecatch.py --date D --repo <リポジトリ> --out eyecatch_D.png で作る（紺色 #00243F の地に記事タイトルとロゴマーク、1280×670）。作った画像を必ず開いて見て、文字のはみ出しや重なりが無いことを確かめてから、/mnt/user-data/uploads/ に写し、見出し画像のボタン →「画像をアップロード」→ file_upload →「保存」で入れる（note-editor-ops 第5章）
 6. 「下書き保存」→「公開に進む」。ハッシュタグは「AI」「AIニュース」と、話題に合うものを1〜2個（例：ChatGPT、SEO）。記事タイプは無料
 7. 「投稿する」を押す。安全機能で押せないときだけ、cic-login-handoff の形で高崎さんに押してもらう
 8. 公開ページ https://note.com/infosuccess_jp/n/（key）を開き、タイトル・見出し・出典のリンクが出ているかを確かめる
@@ -104,3 +104,30 @@ AIトレンド朝刊のその日の号から、note と X の下書きを作る�
 
 ### 7-5. 途中で止まったとき
 どこまで終わったか（noteは下書きまで、Xは未投稿 など）と、止まった理由をそのまま伝える。投稿できた分は mark_posted.py で記録しておく（次に頼まれたとき、二重に投稿しないため）。
+
+## 8. 自動投稿（毎朝の予約実行「AI朝刊の自動投稿（note・X）」）
+
+高崎さんの決定（2026-11-11）：毎日、朝に note と X の1本目、夜19:00に X の2本目を自動で出す。予約実行そのものが、その日の投稿への了承になる。本人は見ていないので質問しない。
+
+### 8-1. 投稿する前に確かめること（1つでも外れたら投稿しない）
+- 日付 D は TZ=Asia/Tokyo date +%F で取る
+- data/posts/D.json が無い：下書きが出ていない。投稿せず、通知して終わる
+- posted.note_url がある：投稿済み。何もせず終わる
+- "hold": true がある：高崎さんが止めた日。投稿せず、通知して終わる
+- PC の Chrome（Claude in Chrome）につながらない：投稿せず、「AI朝刊の投稿：PCのChromeにつながらず投稿できませんでした。アプリのボタンから頼めば出せます」と通知して終わる
+- アカウントが infosuccess_jp でない（note・X のどちらか）：何も入力せず、通知して終わる
+
+### 8-2. 投稿
+1. note：7-2 のとおり（新しい記事を作り、本文・見出し画像・ハッシュタグを入れて公開し、公開ページを確かめる）
+2. X の1本目：7-3 の 1〜2 のとおり、すぐ投稿する
+3. X の2本目：その日の 19:00（日本時間）の予約投稿にする（note-editor-ops 第8章「予約投稿」。末尾に note のURLを足す）。https://x.com/compose/post/unsent/scheduled で日時と本文を確かめる。予約ができないときは、1本目から3分以上あけてすぐ投稿し、報告に書く
+4. 記録：mark_posted.py に note のURLと X の1本目のURLを渡す。2本目を予約にした日は、data/posts/D.json の posted に "x2_scheduled": "19:00" を足す → コミット「投稿済み D」→ push
+5. 報告：SendUserMessage で note のURL、X の1本目のURL、2本目の予約時刻（URLは1行に単独で）。PushNotification は一行「AI朝刊の投稿：note と X に出しました（2本目は19:00）」
+
+### 8-3. 止める・直す（高崎さんから、投稿の前に連絡が来たとき）
+- 「今日は止めて」：data/posts/D.json に "hold": true を足して push する。出すと決めたら hold を消し、第7章の手順で投稿する
+- 「ここを直して」：7-1 のとおり下書きを直して push する。自動投稿は直した下書きを使う
+- 予約済みの X の2本目を止める・直す：https://x.com/compose/post/unsent/scheduled で消す・直す
+
+### 8-4. 途中で止まったとき
+7-5 と同じ。投稿できた分は必ず記録し、どこまで終わったかと理由を SendUserMessage と PushNotification で知らせる。安全機能で公開のボタンが押せないときは、下書き保存までで止め、そう知らせる（アプリのボタンから頼めば続きができる）。
