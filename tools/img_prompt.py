@@ -9,7 +9,7 @@
 #                  "sub": "サブコピー", "labels": ["右の図のラベル", ...], "struct": "右の図の構成（言葉で）"},
 #     "figs": [{"id": "fig1", "after": "## 概要", "title": "図のタイトル", "texts": ["図の中の文言", ...],
 #               "note": "図の下の補足1行", "struct": "図の構成（言葉で）", "alt": "図が示す内容"}],
-#     "xfig": {同じ形（after は不要）。X の夜の1本に付ける図}
+#     "xfig": {同じ形（after は不要）。X の昼の1本に付ける図}
 #   }
 # 共通の決まり（色・書体・文字の大きさ・禁止事項）はこのファイルにまとめて持つ。指示文の型を変えるときはここを直す。
 import argparse, json, os, re
@@ -85,7 +85,7 @@ def items(img):
     for f in img.get("figs") or []:
         out.append((f["id"], f"note の「{f['after'][3:]}」の下", f.get("alt", "")))
     if img.get("xfig"):
-        out.append(("xfig", "X の夜の1本（19:00）", img["xfig"].get("alt", "")))
+        out.append(("xfig", "X の昼の1本（12:15）", img["xfig"].get("alt", "")))
     return out
 
 
