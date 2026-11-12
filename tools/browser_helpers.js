@@ -1,4 +1,4 @@
-// AIトレンド朝刊 ブラウザ用の補助関数 ver1.0 (2026-11-12) ChatGPT で画像を作り、クリップボード経由で note・X に渡す
+// AIトレンド朝刊 ブラウザ用の補助関数 ver1.1 (2026-11-12) ChatGPT で画像を作り、クリップボード経由で note・X に渡す。見出し画像の左下にロゴと社名を入れる（__brand）
 // 使い方：ページを開くたびに、該当する部分（=== CHATGPT === か === TARGET ===）を javascript_tool でそのまま実行して定義する。
 // 流れ（ダウンロードフォルダやコンテナを通さない。画像のデータは Claude の会話に入らない）：
 //   1. ChatGPT のタブ：__send(指示文) → __state() で完成を待つ → __copy() で最後の画像をクリップボードへ
@@ -93,3 +93,27 @@ window.__dropEmptyBefore = async (h2text) => { // note：見出しと図の間�
   document.dispatchEvent(new Event('selectionchange')); await __sleep(200); document.execCommand('delete'); await __sleep(300); return 'DROPPED';
 };
 window.__order = () => [...document.querySelector('.ProseMirror').children].map(e => e.tagName + (e.tagName === 'H2' ? ':' + e.textContent : '')).join(','); // 並びの確認用
+window.__brand = async (file, name) => { // 見出し画像（1280×670）の左下に、本物のロゴマークと「インフォサクセス」を描き足す
+  const bmp = await createImageBitmap(file); const W = bmp.width, H = bmp.height;
+  const c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d'); x.drawImage(bmp, 0, 0);
+  const bg = x.getImageData(4, H - 4, 1, 1).data; // 左下の背景色
+  const lh = Math.round(H * 0.085), s = lh / 100, X0 = Math.round(W * 0.045), Y0 = H - Math.round(H * 0.05) - lh;
+  x.font = `600 ${Math.round(lh * 0.5)}px "Yu Gothic UI","Yu Gothic","Meiryo","Noto Sans JP","Noto Sans CJK JP",sans-serif`;
+  x.letterSpacing = Math.round(lh * 0.08) + 'px';
+  const label = 'インフォサクセス'; const tw = x.measureText(label).width;
+  const gap = Math.round(lh * 0.35), lw = 78 * s;
+  x.fillStyle = `rgb(${bg[0]},${bg[1]},${bg[2]})`; x.fillRect(X0 - lh * 0.3, Y0 - lh * 0.25, lw + gap * 2 + tw + lh * 0.6, lh * 1.5); // 下地（何か描かれていても隠す）
+  const poly = (pts, col) => { x.fillStyle = col; x.beginPath(); pts.forEach(([a, b], i) => { const px = X0 + a * s, py = Y0 + b * s; i ? x.lineTo(px, py) : x.moveTo(px, py); }); x.closePath(); x.fill(); };
+  poly([[0, 12], [17, 0], [17, 88], [0, 88]], '#00243F');
+  poly([[33, 24], [72, 0], [72, 12], [45, 32]], '#9FB8CE');
+  poly([[20, 24], [76, 54], [24, 98], [24, 76], [52, 56], [20, 40]], '#0B629E');
+  x.fillStyle = '#9FB8CE'; x.fillRect(X0 + lw + gap * 0.5, Y0 + lh * 0.18, Math.max(2, lh * 0.04), lh * 0.64); // 区切りの細い線
+  x.fillStyle = '#0B629E'; x.textBaseline = 'middle'; x.fillText(label, X0 + lw + gap, Y0 + lh * 0.5);
+  const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.9));
+  return new File([blob], name || file.name, { type: 'image/jpeg' });
+};
+window.__toClip = async (file) => { // ファイルを PNG にしてクリップボードへ（X に、ロゴ入りの見出し画像を ctrl+v で付けるため。タブが前面にあること）
+  const bmp = await createImageBitmap(file); const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height; c.getContext('2d').drawImage(bmp, 0, 0);
+  const b = await new Promise(r => c.toBlob(r, 'image/png'));
+  try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': b })]); return 'COPIED ' + b.size; } catch (e) { return 'COPY_NG ' + e.name + ' ' + e.message; }
+};
