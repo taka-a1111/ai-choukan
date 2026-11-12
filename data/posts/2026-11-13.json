@@ -95,6 +95,11 @@
   "x_urls": [
    "https://x.com/infosuccess_jp/status/2121001453234114935"
   ],
-  "at": "2026-11-13T07:05+09:00"
+  "at": "2026-11-13T07:05+09:00",
+  "x_scheduled": [
+   "12:15",
+   "20:00"
+  ],
+  "facebook": true
  }
 }
