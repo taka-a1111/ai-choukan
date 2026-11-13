@@ -90,5 +90,9 @@
    "struct": "同じ幅の横長の箱4つを上から下へ積む。各箱の左に見出し（濃紺の太字）、その右に説明（1行）。箱は淡いブルーの塗り",
    "alt": "Claude Meetingsは、Team・Enterpriseプランでベータ提供中で、今はGoogle Meetに対応し、議事録と回答はベータ中無料、使う前に参加者全員から文字起こしの同意が必要であることを示した図"
   }
+ },
+ "posted": {
+  "note_url": "https://note.com/infosuccess_jp/n/nbe97c51aa175",
+  "at": "2026-11-14T06:57+09:00"
  }
 }
