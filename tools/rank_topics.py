@@ -1,9 +1,11 @@
-# AIトレンド朝刊 話題の注目度 ver1.0 (2026-11-13) その日の号の話題を、注目度の高い順に並べる（投稿の下書きで main・others・昼の1本を選ぶため）
+# AIトレンド朝刊 話題の注目度 ver1.1 (2026-11-13) 新しいモデル・バージョン・ツールの話題に加点し、新モデルも読者向け○に。その日の号の話題を、注目度の高い順に並べる（投稿の下書きで main・others・昼の1本を選ぶため）
 # 使い方: python3 tools/rank_topics.py --date YYYY-MM-DD --repo <リポジトリのdir> [--top 20]
 # 注目度の目安（号のデータから数える。SNS の数字ではない）
 #   媒体数×3 ＋ 記事数 ＋ 国内と海外の両方で報じられた＋2 ＋ 動画でも扱われた＋2 ＋ 重要度3なら＋3 ＋ 主要な企業・サービス名が見出しにある＋2 ＋ 続報＋1
+#   ＋ 新しいモデル・バージョン・ツール・機能の話題＋6（カテゴリがツール・新機能、または見出しに公開・リリース・提供開始などがある、または新モデル・研究で版の番号がある。規制・企業動向の話題は除く）
+#   ＋ そのうえ見出しに主要な企業・サービス名と版の番号（Gemini 4、GPT-5.5、2.0 など）がある＋2（高崎さんの方針 2026-11-13：新バージョンやツールを優先）
 # 読者向けの印（reader）
-#   ○：業務に効く（biz）、またはツール・新機能／SEO・検索・Web／活用ノウハウ／開発・自動化の話題
+#   ○：業務に効く（biz）、または新モデル・研究／ツール・新機能／SEO・検索・Web／活用ノウハウ／開発・自動化の話題
 #   ×：株価・売上・決算・上場・買収・資金調達・人事・政治が中心で、読者のやることが変わらない話題（見出しの言葉で判定。目安）
 import argparse, json, os, re
 
@@ -12,7 +14,13 @@ MAJOR = ["ChatGPT", "OpenAI", "Gemini", "Google", "グーグル", "Claude", "Ant
          "Canva", "Adobe", "LINE", "楽天", "ソフトバンク", "NTT", "WordPress", "Perplexity", "YouTube"]
 NOT_READER = ["株価", "時価総額", "売上", "決算", "上場", "IPO", "買収", "資金調達", "調達", "評価額", "CEO", "人事", "議会", "召喚",
               "大統領", "政権", "規制当局", "訴訟", "提訴"]
-READER_CATS = {"T", "S", "K", "D", "ツール・新機能", "SEO・検索・Web", "活用ノウハウ", "開発・自動化"}
+READER_CATS = {"M", "T", "S", "K", "D", "新モデル・研究", "ツール・新機能", "SEO・検索・Web", "活用ノウハウ", "開発・自動化"}
+NEW_CATS = {"T", "ツール・新機能"}
+MODEL_CATS = {"M", "新モデル・研究"}  # 研究・分析だけの話題もあるので、公開などの言葉か版の番号があるときだけ「新」
+NO_NEW_CATS = {"B", "R", "ビジネス・企業動向", "規制・安全・社会"}
+NEW_WORDS = ["公開", "リリース", "提供開始", "開始", "登場", "対応", "搭載", "新機能", "新モデル", "ベータ", "一般提供", "アップデート",
+             "発売", "ローンチ", "刷新", "追加", "実装"]
+VERSION = re.compile(r"[A-Za-z]+[ \-]?\d+(?:\.\d+)?(?![0-9年月日%％ドル円件万億])")
 
 
 def score(t, items):
@@ -26,9 +34,14 @@ def score(t, items):
     s = len(outlets) * 3 + len(its) + (2 if jp and en else 0) + (2 if video else 0) + (3 if t.get("importance") == 3 else 0)
     s += 2 if any(m in title for m in MAJOR) else 0
     s += 1 if t.get("prev") else 0
+    cat = t.get("category")
+    new = cat in NEW_CATS or (cat not in NO_NEW_CATS and (any(w in title for w in NEW_WORDS) or (cat in MODEL_CATS and VERSION.search(title))))
+    if new:
+        s += 6
+        s += 2 if any(m in title for m in MAJOR) and VERSION.search(title) else 0
     bad = [w for w in NOT_READER if w in title]
     reader = (bool(t.get("biz")) or t.get("category") in READER_CATS) and not bad
-    return s, len(outlets), len(its), jp, en, video, reader, bad
+    return s, len(outlets), len(its), jp, en, video, reader, bad, new
 
 
 if __name__ == "__main__":
@@ -41,10 +54,10 @@ if __name__ == "__main__":
     items = {i["id"]: i for i in D.get("items", [])}
     rows = []
     for t in D.get("topics", []):
-        s, no, ni, jp, en, video, reader, bad = score(t, items)
-        rows.append((s, t["id"], no, ni, ("国内" if jp else "") + ("海外" if en else ""), "動画" if video else "", t.get("importance"), t.get("category"),
+        s, no, ni, jp, en, video, reader, bad, new = score(t, items)
+        rows.append((s, t["id"], no, ni, ("国内" if jp else "") + ("海外" if en else ""), "動画" if video else "", "新" if new else "", t.get("importance"), t.get("category"),
                      "○" if reader else "×" + ("（" + "・".join(bad) + "）" if bad else ""), t.get("title", "")[:60]))
     rows.sort(key=lambda r: -r[0])
-    print("注目度\t話題ID\t媒体\t記事\t地域\t動画\t重要度\tカテゴリ\t読者向け\t見出し")
+    print("注目度\t話題ID\t媒体\t記事\t地域\t動画\t新しさ\t重要度\tカテゴリ\t読者向け\t見出し")
     for r in rows[: a.top]:
         print("\t".join(str(x) for x in r))
