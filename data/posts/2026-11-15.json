@@ -98,6 +98,10 @@
   "at": "2026-11-15T07:00+09:00",
   "x_urls": [
    "https://x.com/infosuccess_jp/status/2121724822451573030"
+  ],
+  "x_scheduled": [
+   "12:15",
+   "20:00"
   ]
  }
 }
