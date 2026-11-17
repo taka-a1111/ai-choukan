@@ -1,4 +1,4 @@
-# AIトレンド朝刊 画像の指示文 ver1.1 (2026-11-12) 下書きの images から、ChatGPT に送る指示文（見出し画像・図解）を作る
+# AIトレンド朝刊 画像の指示文 ver1.2 (2026-11-17) note は日曜の週1まとめだけになったので、見出し画像の文言と置き場所の説明を合わせた。下書きの images から、ChatGPT に送る指示文（見出し画像・図解）を作る
 # 使い方:
 #   python3 tools/img_prompt.py --date YYYY-MM-DD --repo <リポジトリのdir> --which eyecatch|fig1|fig2|xfig [--json]
 #   --json を付けると、JavaScript にそのまま渡せる JSON 文字列で出す
@@ -7,8 +7,9 @@
 #   "images": {
 #     "eyecatch": {"head1": "主見出し1行目", "head2": "主見出し2行目", "blue": "青にする語",
 #                  "sub": "サブコピー", "labels": ["右の図のラベル", ...], "struct": "右の図の構成（言葉で）"},
-#     "figs": [{"id": "fig1", "after": "## 概要", "title": "図のタイトル", "texts": ["図の中の文言", ...],
+#     "figs": [{"id": "fig1", "after": "## 今週の5本", "title": "図のタイトル", "texts": ["図の中の文言", ...],
 #               "note": "図の下の補足1行", "struct": "図の構成（言葉で）", "alt": "図が示す内容"}],
+#     （figs は日曜の週1まとめだけ。月〜土は eyecatch（X の朝の1本の画像）と xfig だけ）
 #     "xfig": {同じ形（after は不要）。X の昼の1本に付ける図}
 #   }
 # 共通の決まり（色・書体・文字の大きさ・禁止事項）はこのファイルにまとめて持つ。指示文の型を変えるときはここを直す。
@@ -35,7 +36,7 @@ def q(s):
 
 def eyecatch(e):
     labels = "\n".join(f"・右の図のラベル：{q(x)}" for x in e.get("labels") or [])
-    return f"""note の記事の見出し画像を1枚作ってください。
+    return f"""記事・投稿の見出し画像を1枚作ってください。
 
 【文言】
 ・左上の小さな札（濃紺の塗りに白文字）：「AIニュース解説」
@@ -81,7 +82,7 @@ def load(repo, date):
 def items(img):
     out = []
     if img.get("eyecatch"):
-        out.append(("eyecatch", "note の見出し画像・X の朝の1本", "記事タイトル"))
+        out.append(("eyecatch", "X の朝の1本（日曜は週1まとめの note の見出し画像も）", "見出し"))
     for f in img.get("figs") or []:
         out.append((f["id"], f"note の「{f['after'][3:]}」の下", f.get("alt", "")))
     if img.get("xfig"):

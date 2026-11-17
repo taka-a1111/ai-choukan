@@ -1,7 +1,7 @@
-# AIトレンド朝刊 note用のHTML変換 ver1.0 (2026-11-11) 下書きの本文を、noteのエディタに貼るHTMLにする
+# AIトレンド朝刊 note用のHTML変換 ver1.1 (2026-11-17) 週1まとめの小見出し（### ）と「今週やること」に対応。下書きの本文を、noteのエディタに貼るHTMLにする
 # 使い方: python3 tools/note_html.py --date YYYY-MM-DD --repo <リポジトリのdir> [--out note_payload.json]
 #   出力（JSON）: {"title": 記事タイトル, "html": 本文のHTML, "blocks": ブロックの並び（照合用）}
-# 変換の決まり: 「## 」の行は h2／「・」で始まる行のまとまりは箇条書き／URLだけの行はリンク／
+# 変換の決まり: 「## 」の行は h2／「### 」の行は h3／「・」で始まる行のまとまりは箇条書き／URLだけの行はリンク／
 #   「今日やること」「ほかに押さえておきたい」の中の2行のまとまりは、1行目を h3・2行目を段落にする／それ以外は段落
 import argparse, html, json, os, re
 
@@ -17,12 +17,17 @@ def to_html(body):
             lines = lines[1:]
             if not lines:
                 continue
+        if lines[0].startswith("### "):
+            out.append(f"<h3>{e(lines[0][4:])}</h3>"); kinds.append("H3")
+            lines = lines[1:]
+            if not lines:
+                continue
         if all(l.startswith("・") for l in lines):
             out.append("<ul>" + "".join(f"<li>{e(l[1:])}</li>" for l in lines) + "</ul>"); kinds.append("UL")
         elif len(lines) == 1 and re.match(r"^https?://\S+$", lines[0]):
             u = lines[0]
             out.append(f'<p><a href="{e(u)}">{e(u)}</a></p>'); kinds.append("P")
-        elif (sec.startswith("今日やること") or sec.startswith("ほかに")) and len(lines) == 2:
+        elif (sec.startswith("今日やること") or sec.startswith("今週やること") or sec.startswith("ほかに")) and len(lines) == 2:
             out.append(f"<h3>{e(lines[0])}</h3><p>{e(lines[1])}</p>"); kinds += ["H3", "P"]
         else:
             out.append("<p>" + "<br>".join(e(l) for l in lines) + "</p>"); kinds.append("P")

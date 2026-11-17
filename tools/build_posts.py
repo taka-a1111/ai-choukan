@@ -1,23 +1,28 @@
-# AIトレンド朝刊 投稿下書きの組み立て ver1.3 (2026-11-12) note・Xの下書き（Xは朝・昼・夜の3本、画像の指示、セルフチェック）を検査して data/posts/ に書く（作り直しても投稿済みの記録は残す）
+# AIトレンド朝刊 投稿下書きの組み立て ver2.0 (2026-11-17) note は日曜の週1まとめ（kind=weekly）だけにし、ほかの日は X だけ（kind=daily）。有料noteの案内（data/promo.json）に対応
 # 書き方の決まりは tools/POSTS_GUIDE.md。
 # 使い方:
-#   python3 tools/build_posts.py --posts posts.json --date YYYY-MM-DD --repo <リポジトリのdir>
-# posts.json:
-#   {"main": "今日の1本の話題ID", "others": ["ほか3本の話題ID", ...],
-#    "note": {"title": "記事タイトル", "body": "本文（見出しは行頭に ## ）"},
-#    "x_topics": ["X の昼の1本だけで扱う話題ID（note に載せない話題。無ければ省く）"],
+#   python3 tools/build_posts.py --posts posts.json --date YYYY-MM-DD --repo <リポジトリのdir> [--dry-run] [--any-day]
+#   --dry-run は検査だけして書き込まない。--any-day は日曜以外でも週1まとめを検査できるようにする（試運転用。書き込みはしない）
+# posts.json（毎日。月〜土は note を書かない）:
+#   {"kind": "daily",
+#    "main": "今日の1本の話題ID", "others": ["ほか3本の話題ID", ...],
+#    "x_topics": ["X の昼の1本だけで扱う話題ID（無ければ省く）"],
 #    "x": [{"label": "朝の1本", "at": "朝", "text": "投稿文"}, {"label": "昼の1本", "at": "12:15", "text": "投稿文"},
 #          {"label": "今日の3つ", "at": "20:00", "text": "投稿文"}],
-#    "images": {"eyecatch": {...}, "figs": [{"id": "fig1", "after": "## 概要", ...}], "xfig": {...}}（形は tools/img_prompt.py の先頭）,
-#    "ok_numbers": ["本文にあって号の解説にない数字のうち、確かめたうえで通すもの（例: 手順の番号ではない数字）"]}
+#    "images": {"eyecatch": {...}, "xfig": {...}}（形は tools/img_prompt.py の先頭。figs は日曜だけ）,
+#    "ok_numbers": ["本文にあって号の解説にない数字のうち、確かめたうえで通すもの"]}
+# 日曜（週1まとめ）は kind を "weekly" にし、上に加えて:
+#    "week_topics": [{"date": "YYYY-MM-DD", "id": "話題ID"}, ...]（その週の号から4〜6本。ふつうは5本）,
+#    "note": {"title": "記事タイトル", "body": "本文（見出しは行頭に ## 、話題ごとの小見出しは ### ）"},
+#    "images": {"eyecatch": {...}, "figs": [...2枚まで], "xfig": {...}}
 # 検査（1つでも外れると書き込まずに終わる。終了コード1）:
-#   - main・others・x_topics の話題IDが、その日の号にあること
-#   - 出典のURLが、選んだ話題の出典にあること（号にないURLを書かない。決まった窓口のURL（CTA_URLS）は除く）
-#   - images の文言の数字も同じ検査。図の置き場所（after）の見出しが本文にあること、図は2枚まで
-#   - 本文に「## 30秒セルフチェック」があること
-#   - 本文・投稿文の数字（2桁以上、または ％・倍・円・ドル・人・件・社 などが付く数字）が、選んだ話題の解説にあること
-#   - Xの投稿文が全角140字相当（半角は0.5字、URLは11.5字）に収まること
-#   - 太字記号（**）がないこと、タイトルが60字以内、本文が600〜3000字
+#   - 話題IDが号にあること（main・others・x_topics は D の号、week_topics はそれぞれの日の号。週は D の6日前〜D）
+#   - 出典のURLが、選んだ話題の出典にあること（決まった窓口のURL（CTA_URLS）と有料noteの案内のURLは除く）
+#   - 本文・投稿文・画像の文言の数字が、選んだ話題の解説にあること
+#   - Xの投稿文が全角140字相当に収まること。月〜土の X には note の話を書かない（その日の note は無い）
+#   - 週1まとめ：決まった見出しがあること、タイトル60字以内、本文2500〜5500字、図は2枚まで、
+#     data/promo.json に URL が入っている有料noteは、その URL が本文にあること（URL が空のうちは案内を入れない）
+#   - 太字記号（**）がないこと
 # 書き込み先: data/posts/YYYY-MM-DD.json（60日より古いものは消す）
 import argparse, json, os, re, sys, unicodedata
 from datetime import datetime, timezone, timedelta
@@ -84,48 +89,130 @@ def numbers_in(text):
     return out
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--posts", required=True)
-    ap.add_argument("--date", required=True)
-    ap.add_argument("--repo", required=True)
-    a = ap.parse_args()
+WEEKLY_HEADS = ["## 30秒まとめ", "## 今週の5本", "## 今週やること", "## 30秒セルフチェック", "## 出典"]
 
-    issue_path = os.path.join(a.repo, "data", "issues", f"{a.date}.json")
-    if not os.path.exists(issue_path):
-        print(f"NG: {a.date} の号がありません（朝刊の発行を先に確かめる）")
-        sys.exit(1)
-    issue = json.load(open(issue_path, encoding="utf-8"))
-    P = json.load(open(a.posts, encoding="utf-8"))
+
+def load_issue(repo, date):
+    path = os.path.join(repo, "data", "issues", f"{date}.json")
+    if not os.path.exists(path):
+        return None
+    issue = json.load(open(path, encoding="utf-8"))
     items = {i["id"]: i for i in issue.get("items", [])}
     topics = {t["id"]: t for t in issue.get("topics", [])}
     for i in issue.get("items", []):  # 話題にまとまっていない単独記事（アプリでは s＋記事ID）
         topics.setdefault("s" + i["id"], {"id": "s" + i["id"], "title": i.get("title_ja") or i.get("title"),
                                            "summary": i.get("summary"), "avail": i.get("avail"),
                                            "biz_tip": i.get("biz_tip"), "item_ids": [i["id"]]})
+    return {"items": items, "topics": topics}
+
+
+def load_promo(repo):
+    """有料noteの案内。URL が入っているものだけを返す（公開前は空）。"""
+    path = os.path.join(repo, "data", "promo.json")
+    if not os.path.exists(path):
+        return []
+    try:
+        return [x for x in json.load(open(path, encoding="utf-8")).get("paid_notes", []) if str(x.get("url") or "").startswith("http")]
+    except Exception:
+        return []
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--posts", required=True)
+    ap.add_argument("--date", required=True)
+    ap.add_argument("--repo", required=True)
+    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--any-day", action="store_true")
+    a = ap.parse_args()
+    if a.any_day:
+        a.dry_run = True
+
+    today = load_issue(a.repo, a.date)
+    if not today:
+        print(f"NG: {a.date} の号がありません（朝刊の発行を先に確かめる）")
+        sys.exit(1)
+    P = json.load(open(a.posts, encoding="utf-8"))
+    dD = datetime.strptime(a.date, "%Y-%m-%d")
+    sunday = dD.weekday() == 6
+    kind = P.get("kind") or ("weekly" if P.get("note") else "daily")
 
     errs = []
-    picks = [P.get("main")] + list(P.get("others") or []) + list(P.get("x_topics") or [])
-    for k in picks:
-        if k not in topics:
-            errs.append(f"話題ID {k} がこの号にありません")
-    picked = [topics[k] for k in picks if k in topics]
-    src_items = [items[i] for t in picked for i in (t.get("item_ids") or []) if i in items]
-    allowed_urls = {u.split("?")[0].rstrip("/") for u in (it.get("url", "") for it in src_items)}
-    facts = " ".join(topic_text(t, [items[i] for i in (t.get("item_ids") or []) if i in items]) for t in picked)
+    if kind not in ("daily", "weekly"):
+        errs.append(f"kind は daily か weekly（いまは {kind}）")
+    if kind == "weekly" and not sunday and not a.any_day:
+        errs.append("週1まとめ（weekly）は日曜だけ。月〜土は kind を daily にし、note を書かない")
+    if kind == "daily" and P.get("note"):
+        errs.append("月〜土は note を書かない（note は日曜の週1まとめだけ）")
+    if kind == "daily" and sunday:
+        errs.append("日曜は週1まとめ（kind を weekly）を作る")
+
+    # 選んだ話題（D の号と、週1まとめはその週の号）
+    picked = []  # (topic, items_dict)
+    for k in [P.get("main")] + list(P.get("others") or []) + list(P.get("x_topics") or []):
+        if k not in today["topics"]:
+            errs.append(f"話題ID {k} が {a.date} の号にありません")
+        else:
+            picked.append((today["topics"][k], today["items"]))
+    week = []
+    if kind == "weekly":
+        wt = list(P.get("week_topics") or [])
+        if not (4 <= len(wt) <= 6):
+            errs.append(f"week_topics が{len(wt)}本（4〜6本。ふつうは5本）")
+        lo = (dD - timedelta(days=6)).strftime("%Y-%m-%d")
+        cache = {}
+        for w in wt:
+            wd, wid = str(w.get("date") or ""), w.get("id")
+            if not (lo <= wd <= a.date):
+                errs.append(f"week_topics の {wd} は週（{lo}〜{a.date}）の外です")
+                continue
+            if wd not in cache:
+                cache[wd] = load_issue(a.repo, wd)
+            iss = cache[wd]
+            if not iss or wid not in iss["topics"]:
+                errs.append(f"week_topics の {wd} {wid} が号にありません")
+                continue
+            picked.append((iss["topics"][wid], iss["items"]))
+            week.append({"date": wd, "id": wid, "title": iss["topics"][wid].get("title")})
+        if len({(w["date"], w["id"]) for w in week}) != len(week):
+            errs.append("week_topics に同じ話題が2回入っています")
+
+    src_items = [its[i] for t, its in picked for i in (t.get("item_ids") or []) if i in its]
+    promo = load_promo(a.repo)
+    promo_urls = {str(x["url"]).split("?")[0].rstrip("/") for x in promo}
+    allowed_urls = {u.split("?")[0].rstrip("/") for u in (it.get("url", "") for it in src_items)} | CTA_URLS | promo_urls
+    facts = " ".join(topic_text(t, [its[i] for i in (t.get("item_ids") or []) if i in its]) for t, its in picked)
     facts_digits = facts.replace(",", "")
 
     note = P.get("note") or {}
     title, body = str(note.get("title") or ""), str(note.get("body") or "")
     xs = P.get("x") or []
-    if not title or not body:
-        errs.append("note の title・body がありません")
-    if len(title) > 60:
-        errs.append(f"タイトルが{len(title)}字（60字まで）")
-    if not (600 <= len(body) <= 3000):
-        errs.append(f"本文が{len(body)}字（600〜3000字）")
     if not xs:
         errs.append("x の投稿文がありません")
+    if kind == "weekly":
+        if not title or not body:
+            errs.append("週1まとめの note の title・body がありません")
+        if len(title) > 60:
+            errs.append(f"タイトルが{len(title)}字（60字まで）")
+        if not (2500 <= len(body) <= 5500):
+            errs.append(f"本文が{len(body)}字（2500〜5500字）")
+        heads = [l.strip() for l in body.split("\n") if l.startswith("## ")]
+        for h in WEEKLY_HEADS:
+            if not any(x.startswith(h) for x in heads):
+                errs.append(f"本文に「{h}」の見出しがありません")
+        if "https://infosuccess.jp" not in body:
+            errs.append("本文の最後に相談窓口の1文と https://infosuccess.jp/ がありません")
+        for x in promo:
+            if str(x["url"]).split("?")[0].rstrip("/") not in {u.split("?")[0].rstrip("/") for u in URL_RE.findall(body)}:
+                errs.append(f"有料noteの案内（{x.get('title')}）の URL が本文にありません（data/promo.json の文面で入れる）")
+        if not promo and re.search(r"有料note|円の(?:チェックリスト|キット)", body):
+            errs.append("有料noteはまだ公開前（data/promo.json の URL が空）なので、案内を入れない")
+    else:
+        heads = []
+        for i, x in enumerate(xs):
+            if re.search(r"note", str(x.get("text") or ""), re.I):
+                errs.append(f"x[{i}]: 月〜土は note が無いので、note の話を書かない（朝の1本の URL は投稿のときに足す）")
+
     imgs = P.get("images") or {}
     img_texts = []
     if imgs.get("eyecatch"):
@@ -137,9 +224,10 @@ def main():
         if e.get("blue") and e["blue"] not in (e.get("head1", "") + e.get("head2", "")):
             errs.append("images.eyecatch: blue（青にする語）が主見出しにありません")
     figs = list(imgs.get("figs") or [])
+    if kind == "daily" and figs:
+        errs.append("月〜土は note が無いので images.figs を書かない（eyecatch と xfig だけ）")
     if len(figs) > 2:
-        errs.append(f"images.figs が{len(figs)}枚（note の図解は2枚まで）")
-    heads = [l.strip() for l in body.split("\n") if l.startswith("## ")]
+        errs.append(f"images.figs が{len(figs)}枚（週1まとめの図解は2枚まで）")
     for f in figs + ([dict(imgs["xfig"], id="xfig", after="-")] if imgs.get("xfig") else []):
         name = f"images.{f.get('id')}"
         for k in ("id", "title", "texts", "note", "struct", "alt"):
@@ -148,16 +236,16 @@ def main():
         if f.get("after") != "-" and f.get("after") not in heads:
             errs.append(f"{name}: 置き場所 {f.get('after')} の見出しが本文にありません")
         img_texts.append((name, " ".join([str(f.get("title", "")), str(f.get("note", ""))] + [str(t) for t in f.get("texts") or []])))
-    if "## 30秒セルフチェック" not in body:
-        errs.append("本文に「## 30秒セルフチェック」がありません")
-    alltext = [("note", title + "\n" + body)] + [(f"x[{i}]", str(x.get("text") or "")) for i, x in enumerate(xs)] + img_texts
+
+    alltext = ([("note", title + "\n" + body)] if kind == "weekly" else []) + \
+        [(f"x[{i}]", str(x.get("text") or "")) for i, x in enumerate(xs)] + img_texts
+    ok = set(str(n) for n in (P.get("ok_numbers") or []))
     for name, text in alltext:
         if "**" in text:
             errs.append(f"{name}: 太字記号（**）があります")
         for u in URL_RE.findall(text):
-            if u.split("?")[0].rstrip("/") not in allowed_urls and u.split("?")[0].rstrip("/") not in CTA_URLS:
+            if u.split("?")[0].rstrip("/") not in allowed_urls:
                 errs.append(f"{name}: 号の出典にないURL {u}")
-        ok = set(str(n) for n in (P.get("ok_numbers") or []))
         for n in numbers_in(text):
             if n not in facts_digits and n not in ok:
                 errs.append(f"{name}: 数字 {n} が、選んだ話題の解説にありません（確かめて直すか ok_numbers に入れる）")
@@ -165,10 +253,6 @@ def main():
         n = x_len(x.get("text"))
         if n > 280:
             errs.append(f"x[{i}]: 長すぎます（全角{n / 2:.0f}字相当。140字まで）")
-    if "## 出典" not in body:
-        errs.append("本文に「## 出典」がありません")
-    if "今日やること" not in body:
-        errs.append("本文に「今日やること」がありません")
 
     if errs:
         print("NG（書き込んでいません）")
@@ -177,16 +261,24 @@ def main():
         sys.exit(1)
 
     now = datetime.now(JST)
-    out = {"date": a.date, "updatedAt": now.strftime("%Y-%m-%dT%H:%M+09:00"),
+    out = {"date": a.date, "kind": kind, "updatedAt": now.strftime("%Y-%m-%dT%H:%M+09:00"),
            "main": P["main"], "others": list(P.get("others") or []),
-           "main_title": topics[P["main"]].get("title"),
-           "note": {"title": title, "body": body},
+           "main_title": today["topics"][P["main"]].get("title"),
            "x": [dict({"label": str(x.get("label") or f"{i + 1}本目"), "text": str(x["text"]), "len": round(x_len(x["text"]) / 2)},
                       **({"at": str(x["at"])} if x.get("at") else {})) for i, x in enumerate(xs)]}
+    if kind == "weekly":
+        out["week_from"] = (dD - timedelta(days=6)).strftime("%Y-%m-%d")
+        out["week_topics"] = week
+        out["note"] = {"title": title, "body": body}
     if P.get("x_topics"):
         out["x_topics"] = list(P["x_topics"])
     if imgs:
         out["images"] = imgs
+    summary = (f"週1まとめ {len(body)}字・{len(week)}本  " if kind == "weekly" else "X だけ  ") + \
+        f"x {len(xs)}本（" + "・".join(f"{x['len']}字" for x in out["x"]) + "）"
+    if a.dry_run:
+        print(f"OK（検査のみ。書き込んでいません）: {summary}")
+        return
     d = os.path.join(a.repo, "data", "posts")
     os.makedirs(d, exist_ok=True)
     old = os.path.join(d, f"{a.date}.json")
@@ -202,7 +294,7 @@ def main():
     for f in os.listdir(d):
         if f.endswith(".json") and f[:10] < limit:
             os.remove(os.path.join(d, f))
-    print(f"OK: data/posts/{a.date}.json  note {len(body)}字  x {len(xs)}本（" + "・".join(f"{x['len']}字" for x in out["x"]) + "）")
+    print(f"OK: data/posts/{a.date}.json  {summary}")
 
 
 if __name__ == "__main__":
