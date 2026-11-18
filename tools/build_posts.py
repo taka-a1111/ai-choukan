@@ -1,4 +1,4 @@
-# AIトレンド朝刊 投稿下書きの組み立て ver2.0 (2026-11-17) note は日曜の週1まとめ（kind=weekly）だけにし、ほかの日は X だけ（kind=daily）。有料noteの案内（data/promo.json）に対応
+# AIトレンド朝刊 投稿下書きの組み立て ver2.1 (2026-11-18) 公開前の有料noteの予告（pending_line）に対応。ver2.0 (2026-11-17) note は日曜の週1まとめ（kind=weekly）だけにし、ほかの日は X だけ（kind=daily）。有料noteの案内（data/promo.json）に対応
 # 書き方の決まりは tools/POSTS_GUIDE.md。
 # 使い方:
 #   python3 tools/build_posts.py --posts posts.json --date YYYY-MM-DD --repo <リポジトリのdir> [--dry-run] [--any-day]
@@ -21,7 +21,7 @@
 #   - 本文・投稿文・画像の文言の数字が、選んだ話題の解説にあること
 #   - Xの投稿文が全角140字相当に収まること。月〜土の X には note の話を書かない（その日の note は無い）
 #   - 週1まとめ：決まった見出しがあること、タイトル60字以内、本文2500〜5500字、図は2枚まで、
-#     data/promo.json に URL が入っている有料noteは、その URL が本文にあること（URL が空のうちは案内を入れない）
+#     data/promo.json に URL が入っている有料noteは、その URL が本文にあること。URL が空で pending_line があるものは、その1文が本文にあること
 #   - 太字記号（**）がないこと
 # 書き込み先: data/posts/YYYY-MM-DD.json（60日より古いものは消す）
 import argparse, json, os, re, sys, unicodedata
@@ -106,15 +106,18 @@ def load_issue(repo, date):
     return {"items": items, "topics": topics}
 
 
-def load_promo(repo):
-    """有料noteの案内。URL が入っているものだけを返す（公開前は空）。"""
+def load_promo(repo, pending=False):
+    """有料noteの案内。URL が入っているものを返す。pending=True なら、URL が空で予告の1文（pending_line）があるものを返す。"""
     path = os.path.join(repo, "data", "promo.json")
     if not os.path.exists(path):
         return []
     try:
-        return [x for x in json.load(open(path, encoding="utf-8")).get("paid_notes", []) if str(x.get("url") or "").startswith("http")]
+        xs = json.load(open(path, encoding="utf-8")).get("paid_notes", [])
     except Exception:
         return []
+    if pending:
+        return [x for x in xs if not str(x.get("url") or "").startswith("http") and x.get("pending_line")]
+    return [x for x in xs if str(x.get("url") or "").startswith("http")]
 
 
 def main():
@@ -207,6 +210,9 @@ def main():
                 errs.append(f"有料noteの案内（{x.get('title')}）の URL が本文にありません（data/promo.json の文面で入れる）")
         if not promo and re.search(r"有料note|円の(?:チェックリスト|キット)", body):
             errs.append("有料noteはまだ公開前（data/promo.json の URL が空）なので、案内を入れない")
+        for x in load_promo(a.repo, pending=True):
+            if x["pending_line"] not in body:
+                errs.append(f"公開前の有料note（{x.get('title')}）の予告の1文が本文にありません（data/promo.json の pending_line をそのまま入れる）")
     else:
         heads = []
         for i, x in enumerate(xs):
