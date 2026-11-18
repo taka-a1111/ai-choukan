@@ -59,8 +59,12 @@
  },
  "posted": {
   "x_urls": [
-   "https://x.com/infosuccess_jp/status/2122957612014874873"
+   "https://x.com/infosuccess_jp/status/2122957612014874873",
+   "https://x.com/infosuccess_jp/status/2122958563408789973"
   ],
-  "at": "2026-11-18T16:38+09:00"
+  "at": "2026-11-18T16:43+09:00",
+  "x_scheduled": [
+   "20:00"
+  ]
  }
 }
