@@ -182,6 +182,32 @@ form.add input,form.add select{border:1px solid var(--rule);background:var(--pap
 .prevnote{margin:4px 0 0;font-size:12.5px;line-height:1.6;color:var(--muted);overflow-wrap:anywhere}
 .linkbtn{border:0;background:none;padding:0;color:var(--ai);text-decoration:underline;cursor:pointer;font-size:12.5px}
 
+
+/* まとめ図（2026-11-19：文章を並べず、話題ごとに図で見せる） */
+.sf{margin:10px 0 0;display:grid;gap:14px}
+.sf-n{position:relative;background:var(--sheet);border:1px solid var(--rule);border-radius:8px;padding:8px 10px 9px;min-width:0}
+.sf-n+.sf-n::before{content:"";position:absolute;top:-14px;left:22px;height:14px;border-left:2px solid var(--ai)}
+.sf-h{display:flex;align-items:center;gap:6px;font-size:11.5px;letter-spacing:.04em;color:var(--ai);font-weight:600;margin-bottom:4px}
+.sf-h i{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--ai);color:var(--sheet);font-style:normal;font-size:11px;font-weight:700}
+.sf-t{font-size:14.5px;line-height:1.6;overflow-wrap:anywhere}
+.sf-what{border-left:4px solid var(--ai)}
+.sf-what .sf-t{font-size:15px;font-weight:500}
+.sf-pts{display:grid;gap:6px}
+.sf-pt{display:grid;grid-template-columns:22px 1fr;gap:6px;align-items:start;background:var(--ai-soft);border-radius:6px;padding:6px 8px;font-size:13.5px;line-height:1.5;overflow-wrap:anywhere}
+.sf-pt span,.sf-c2 .sf-t{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+.sf-what .sf-t{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;overflow:hidden}
+.sf-more .why,.sf-more .avail{margin-top:8px}
+.sf-pt b{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:4px;background:var(--sheet);color:var(--ai);font-size:12px;font-family:var(--f-data)}
+.sf-when{border:1px solid var(--ai)}
+.sf-when.unk{border-style:dashed}
+.sf-when.unk .sf-t{color:var(--muted)}
+.sf-why{background:var(--ai-soft);border-color:transparent}
+.sf-biz{background:var(--marker);border-color:transparent;color:var(--marker-ink)}
+.sf-biz .sf-h{color:var(--marker-ink)}
+.sf-biz .sf-h i{background:var(--marker-ink);color:var(--marker)}
+.sf-more summary{cursor:pointer;font-size:13px;color:var(--ai);margin-top:10px}
+.sf-more .kp,.sf-more .terms{margin-top:6px}
+
 /* 図解 */
 .fig{margin:12px 0 0;border:1px solid var(--rule);border-radius:8px;padding:10px 12px 12px;background:var(--paper);min-width:0}
 .fig figcaption{font-size:12.5px;color:var(--muted);margin:0 0 8px;line-height:1.5}
@@ -318,7 +344,7 @@ body.has-player .wrap{padding-bottom:150px}
     </div>
   </div>
 </div>
-<p class="build">BUILD_TAG 2026-11-17a</p>
+<p class="build">BUILD_TAG 2026-11-19a</p>
 <script>
 document.documentElement.lang = "ja";
 const CATS = ["新モデル・研究","ツール・新機能","活用ノウハウ","SEO・検索・Web","開発・自動化","ビジネス・企業動向","規制・安全・社会"];
@@ -476,6 +502,20 @@ function figHtml(f){
   } catch { return ""; }
   return `<figure class="fig"><figcaption><b>図解</b>${esc(f.title || "")}</figcaption>${body}</figure>`;
 }
+/* まとめ図：解説の項目（何が起きた・ポイント・いつ誰が・なぜ大事・業務メモ）を、つながった箱の図にする */
+function firstSentence(x){ const s = String(x || "").trim(); const i = s.indexOf("。"); return i > 0 && i < s.length - 1 ? s.slice(0, i + 1) : s; }
+function sumFig(t, lead, points){
+  const n = [];
+  let k = 0;
+  const node = (cls, label, inner) => `<div class="sf-n ${cls}"><div class="sf-h"><i>${++k}</i>${label}</div>${inner}</div>`;
+  if (lead) n.push(node("sf-what", "何が起きた？", `<div class="sf-t">${esc(lead)}</div>`));
+  const pts = (points || []).filter(Boolean).slice(0, 3);
+  if (pts.length) n.push(node("", "ポイント", `<div class="sf-pts">${pts.map((p, i) => `<div class="sf-pt"><b>${i + 1}</b><span>${esc(firstSentence(p))}</span></div>`).join("")}</div>`));
+  if (t.avail) n.push(node(`sf-when${/不明|未発表|発表されていません|明らかにしていません|確認できていません/.test(t.avail) ? " unk" : ""}`, "いつ・誰が使える？", `<div class="sf-t">${esc(firstSentence(t.avail))}</div>`).replace('class="sf-n ', 'class="sf-n sf-c2 '));
+  if (t.why) n.push(node("sf-why sf-c2", "なぜ大事？", `<div class="sf-t">${esc(firstSentence(t.why))}</div>`));
+  if (t.biz && t.biz_tip) n.push(node("sf-biz sf-c2", "業務メモ", `<div class="sf-t">${esc(t.biz_tip)}</div>`));
+  return n.length ? `<div class="sf">${n.join("")}</div>` : "";
+}
 function card(t, opts = {}){
   const items = t.items || [];
   const multi = items.length > 1;
@@ -496,13 +536,15 @@ function card(t, opts = {}){
     <div class="meta">${head}</div>
     <h3>${esc(t.title || one.title_ja || one.title)}</h3>
     ${pvNote}
-    ${lead ? `<p class="lead">${esc(lead)}</p>` : ""}
     ${figHtml(t.fig)}
-    ${t.avail ? `<p class="avail${/不明|未発表|発表されていません|明らかにしていません/.test(t.avail) ? " unk" : ""}"><span class="lbl2">いつ・誰が使える？</span>${esc(t.avail)}</p>` : ""}
-    ${points.length ? `<ul class="kp">${points.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
-    ${t.why ? `<p class="why"><span class="lbl2">なぜ大事？</span>${esc(t.why)}</p>` : ""}
-    ${terms.length ? `<dl class="terms">${terms.map(x => `<div><dt>${esc(x[0])}</dt><dd>${esc(x[1])}</dd></div>`).join("")}</dl>` : ""}
-    ${t.biz && t.biz_tip ? `<p class="tip"><span class="lbl">業務メモ</span>${esc(t.biz_tip)}</p>` : ""}
+    ${sumFig(t, lead, points)}
+    ${(points.length || t.avail || t.why || terms.length) ? `<details class="sf-more"><summary>文章でくわしく読む${terms.length ? `（用語 ${terms.length}）` : ""}</summary>
+      ${lead ? `<p class="lead">${esc(lead)}</p>` : ""}
+      ${points.length ? `<ul class="kp">${points.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+      ${t.avail ? `<p class="avail"><span class="lbl2">いつ・誰が使える？</span>${esc(t.avail)}</p>` : ""}
+      ${t.why ? `<p class="why"><span class="lbl2">なぜ大事？</span>${esc(t.why)}</p>` : ""}
+      ${terms.length ? `<dl class="terms">${terms.map(x => `<div><dt>${esc(x[0])}</dt><dd>${esc(x[1])}</dd></div>`).join("")}</dl>` : ""}
+    </details>` : ""}
     <div class="actions">
       <details class="srcs"><summary>出典 ${items.length}件</summary><ul>${srcList}</ul></details>
       ${TTS.ok ? `<button class="btn" data-speak="${esc(t.id)}">▶ 読み上げ</button>` : ""}
@@ -624,7 +666,7 @@ async function copyText(btn, text){
 }
 
 /* ---------- データ ---------- */
-const BUILD_TAG = "2026-11-17a";
+const BUILD_TAG = "2026-11-19a";
 async function getJSON(path){
   const r = await fetch(path + (path.includes("?") ? "&" : "?") + "t=" + Date.now(), { cache: "no-store" });
   if (!r.ok) throw new Error(r.status);
