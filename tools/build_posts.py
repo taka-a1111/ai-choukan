@@ -1,15 +1,16 @@
-# AIトレンド朝刊 投稿下書きの組み立て ver2.3 (2026-11-23) 週1まとめの太字の印 [[ ]] と表（note.tables）に対応。ver2.2 (2026-11-23) 日曜に出せなかった週1まとめを翌日以降に出す --makeup を追加。ver2.1 (2026-11-18) 公開前の有料noteの予告（pending_line）に対応。ver2.0 (2026-11-17) note は日曜の週1まとめ（kind=weekly）だけにし、ほかの日は X だけ（kind=daily）。有料noteの案内（data/promo.json）に対応
+# AIトレンド朝刊 投稿下書きの組み立て ver2.4 (2026-11-23) 月〜土にも短い note（毎朝の1本の解説、kind daily の note）を書く。ver2.3 (2026-11-23) 週1まとめの太字の印 [[ ]] と表（note.tables）に対応。ver2.2 (2026-11-23) 日曜に出せなかった週1まとめを翌日以降に出す --makeup を追加。ver2.1 (2026-11-18) 公開前の有料noteの予告（pending_line）に対応。ver2.0 (2026-11-17) note は日曜の週1まとめ（kind=weekly）だけにし、ほかの日は X だけ（kind=daily）。有料noteの案内（data/promo.json）に対応
 # 書き方の決まりは tools/POSTS_GUIDE.md。
 # 使い方:
 #   python3 tools/build_posts.py --posts posts.json --date YYYY-MM-DD --repo <リポジトリのdir> [--dry-run] [--any-day]
 #   --dry-run は検査だけして書き込まない。--any-day は日曜以外でも週1まとめを検査できるようにする（試運転用。書き込みはしない）
 #   --makeup は、日曜に出せなかった週1まとめを月曜以降に出すときに使う（日曜以外でも kind weekly を書き込める。週は D の6日前〜D）
-# posts.json（毎日。月〜土は note を書かない）:
+# posts.json（毎日。月〜土の note は、朝の1本（main）の短い解説。見出しは DAILY_HEADS、700〜1600字）:
 #   {"kind": "daily",
 #    "main": "今日の1本の話題ID", "others": ["ほか3本の話題ID", ...],
 #    "x_topics": ["X の昼の1本だけで扱う話題ID（無ければ省く）"],
 #    "x": [{"label": "朝の1本", "at": "朝", "text": "投稿文"}, {"label": "昼の1本", "at": "12:15", "text": "投稿文"},
 #          {"label": "今日の3つ", "at": "20:00", "text": "投稿文"}],
+#    "note": {"title": "記事タイトル（60字まで）", "body": "本文（見出しは ## 。太字にする語は [[ ]]）"},
 #    "images": {"eyecatch": {...}, "xfig": {...}}（形は tools/img_prompt.py の先頭。figs は日曜だけ）,
 #    "ok_numbers": ["本文にあって号の解説にない数字のうち、確かめたうえで通すもの"]}
 # 日曜（週1まとめ）は kind を "weekly" にし、上に加えて:
@@ -21,7 +22,8 @@
 #   - 話題IDが号にあること（main・others・x_topics は D の号、week_topics はそれぞれの日の号。週は D の6日前〜D）
 #   - 出典のURLが、選んだ話題の出典にあること（決まった窓口のURL（CTA_URLS）と有料noteの案内のURLは除く）
 #   - 本文・投稿文・画像の文言の数字が、選んだ話題の解説にあること
-#   - Xの投稿文が全角140字相当に収まること。月〜土の X には note の話を書かない（その日の note は無い）
+#   - Xの投稿文が全角140字相当に収まること。X の投稿文には note の話を書かない（朝の1本の note の URL は投稿のときに足す）
+#   - 月〜土の短い note：DAILY_HEADS の見出し、タイトル60字以内、本文700〜1600字、最後に最新の週1まとめの URL と有料noteの URL があること
 #   - 週1まとめ：決まった見出しがあること、タイトル60字以内、本文2500〜5500字、図は2枚まで、
 #     data/promo.json に URL が入っている有料noteは、その URL が本文にあること。URL が空で pending_line があるものは、その1文が本文にあること
 #   - 太字記号（**）がないこと。太字の印 [[ ]] は note の本文だけで、開きと閉じがそろっていること
@@ -92,6 +94,7 @@ def numbers_in(text):
     return out
 
 
+DAILY_HEADS = ["## ひとことで", "## 何が起きたか", "## いつ・誰が使える", "## 小さな会社への影響", "## 今日やること", "## 出典", "## もっと知りたい方へ"]
 WEEKLY_HEADS = ["## 30秒まとめ", "## 今週の5本", "## 今週やること", "## 30秒セルフチェック", "## 出典"]
 
 
@@ -107,6 +110,21 @@ def load_issue(repo, date):
                                            "summary": i.get("summary"), "avail": i.get("avail"),
                                            "biz_tip": i.get("biz_tip"), "item_ids": [i["id"]]})
     return {"items": items, "topics": topics}
+
+
+def latest_weekly_url(repo, upto):
+    """upto 以前で一番新しい、公開済みの週1まとめの note の URL（無ければ空）。"""
+    best = ""
+    for f in sorted(os.listdir(os.path.join(repo, "data", "posts"))) if os.path.isdir(os.path.join(repo, "data", "posts")) else []:
+        if not f.endswith(".json") or f[:10] > upto:
+            continue
+        try:
+            Q = json.load(open(os.path.join(repo, "data", "posts", f), encoding="utf-8"))
+        except Exception:
+            continue
+        if Q.get("kind") == "weekly" and (Q.get("posted") or {}).get("note_url"):
+            best = Q["posted"]["note_url"]
+    return best
 
 
 def load_promo(repo, pending=False):
@@ -149,8 +167,6 @@ def main():
         errs.append(f"kind は daily か weekly（いまは {kind}）")
     if kind == "weekly" and not sunday and not a.any_day and not a.makeup:
         errs.append("週1まとめ（weekly）は日曜だけ。月〜土は kind を daily にし、note を書かない")
-    if kind == "daily" and P.get("note"):
-        errs.append("月〜土は note を書かない（note は日曜の週1まとめだけ）")
     if kind == "daily" and sunday:
         errs.append("日曜は週1まとめ（kind を weekly）を作る")
 
@@ -187,7 +203,8 @@ def main():
     src_items = [its[i] for t, its in picked for i in (t.get("item_ids") or []) if i in its]
     promo = load_promo(a.repo)
     promo_urls = {str(x["url"]).split("?")[0].rstrip("/") for x in promo}
-    allowed_urls = {u.split("?")[0].rstrip("/") for u in (it.get("url", "") for it in src_items)} | CTA_URLS | promo_urls
+    weekly_url = latest_weekly_url(a.repo, (dD - timedelta(days=1)).strftime("%Y-%m-%d")) if kind == "daily" else ""
+    allowed_urls = {u.split("?")[0].rstrip("/") for u in (it.get("url", "") for it in src_items)} | CTA_URLS | promo_urls | ({weekly_url.split("?")[0].rstrip("/")} if weekly_url else set())
     facts = " ".join(topic_text(t, [its[i] for i in (t.get("item_ids") or []) if i in its]) for t, its in picked)
     facts_digits = facts.replace(",", "")
 
@@ -220,10 +237,29 @@ def main():
             if x["pending_line"] not in body:
                 errs.append(f"公開前の有料note（{x.get('title')}）の予告の1文が本文にありません（data/promo.json の pending_line をそのまま入れる）")
     else:
-        heads = []
+        heads = [l.strip() for l in body.split("\n") if l.startswith("## ")]
+        if not title or not body:
+            errs.append("月〜土の短い note の title・body がありません（朝の1本の解説。POSTS_GUIDE.md 3-2）")
+        if len(title) > 60:
+            errs.append(f"タイトルが{len(title)}字（60字まで）")
+        if body and not (700 <= len(body) <= 1600):
+            errs.append(f"短い note の本文が{len(body)}字（700〜1600字）")
+        if body.count("[[") != body.count("]]") or re.search(r"\[\[[^\]]*\[\[", body):
+            errs.append("太字の印 [[ ]] の開きと閉じがそろっていません")
+        for h in DAILY_HEADS if body else []:
+            if not any(x.startswith(h) for x in heads):
+                errs.append(f"短い note に「{h}」の見出しがありません")
+        body_urls = {u.split("?")[0].rstrip("/") for u in URL_RE.findall(body)}
+        if body and weekly_url and weekly_url.split("?")[0].rstrip("/") not in body_urls:
+            errs.append(f"短い note の最後に、最新の週1まとめの URL（{weekly_url}）がありません")
+        for x in promo if body else []:
+            if str(x["url"]).split("?")[0].rstrip("/") not in body_urls:
+                errs.append(f"短い note の最後に、有料noteの案内（{x.get('title')}）の URL がありません（data/promo.json の文面で入れる）")
+        if P.get("note", {}).get("tables"):
+            errs.append("短い note に表は入れない")
         for i, x in enumerate(xs):
             if re.search(r"note", str(x.get("text") or ""), re.I):
-                errs.append(f"x[{i}]: 月〜土は note が無いので、note の話を書かない（朝の1本の URL は投稿のときに足す）")
+                errs.append(f"x[{i}]: X の投稿文に note の話を書かない（朝の1本の note の URL は投稿のときに足す）")
 
     imgs = P.get("images") or {}
     img_texts = []
@@ -263,7 +299,7 @@ def main():
             if t.get("after") not in allheads:
                 errs.append(f"表 {t.get('id')}: 置き場所 {t.get('after')} の見出しが本文にありません")
             img_texts.append((f"note.tables.{t.get('id')}", " ".join([str(t.get("title", "")), str(t.get("note", ""))] + [str(c) for r in t.get("rows") or [] for c in r])))
-    alltext = ([("note", title + "\n" + body)] if kind == "weekly" else []) + \
+    alltext = ([("note", title + "\n" + body)] if body else []) + \
         [(f"x[{i}]", str(x.get("text") or "")) for i, x in enumerate(xs)] + img_texts
     ok = set(str(n) for n in (P.get("ok_numbers") or []))
     for x in load_promo(a.repo) + load_promo(a.repo, pending=True):  # 自社の有料noteの案内文と値段の数字は通す
@@ -302,11 +338,13 @@ def main():
         out["note"] = {"title": title, "body": body}
         if tables:
             out["note"]["tables"] = tables
+    if kind == "daily" and body:
+        out["note"] = {"title": title, "body": body}
     if P.get("x_topics"):
         out["x_topics"] = list(P["x_topics"])
     if imgs:
         out["images"] = imgs
-    summary = (f"週1まとめ {len(body)}字・{len(week)}本  " if kind == "weekly" else "X だけ  ") + \
+    summary = (f"週1まとめ {len(body)}字・{len(week)}本  " if kind == "weekly" else (f"短い note {len(body)}字  " if body else "X だけ  ")) + \
         f"x {len(xs)}本（" + "・".join(f"{x['len']}字" for x in out["x"]) + "）"
     if a.dry_run:
         print(f"OK（検査のみ。書き込んでいません）: {summary}")

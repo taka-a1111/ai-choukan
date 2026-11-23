@@ -1,6 +1,6 @@
 # AIトレンド朝刊 投稿済みの記録 ver1.1 (2026-11-17) --x-scheduled・--facebook を追加。投稿が終わったら、下書きに投稿先のURLを書く（アプリに「投稿済み」と出る）
 # 使い方: python3 tools/mark_posted.py --date YYYY-MM-DD --repo <リポジトリのdir> [--note-url URL] [--x-url URL ...] [--x-scheduled 12:15 --x-scheduled 20:00] [--facebook]
-#   月〜土（note の無い日）は --note-url を付けない。X の朝の1本を出したら --x-url を付ける
+#   note を出したら --note-url（月〜土は短い記事、日曜は週1まとめ）。X の朝の1本を出したら --x-url を付ける
 #   すでに記録がある項目は、渡した値で上書きする。渡さなかった項目は残す。
 import argparse, json, os
 from datetime import datetime, timezone, timedelta

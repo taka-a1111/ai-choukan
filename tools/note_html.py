@@ -1,4 +1,4 @@
-# AIトレンド朝刊 note用のHTML変換 ver2.0 (2026-11-23) 見やすさのための装飾（太字・ラベル・引用の「やること」・区切り線・番号つきリスト・チェック欄・出典の名前つきリンク）と、表の画像の置き場所に対応。下書きの本文を、noteのエディタに貼るHTMLにする
+# AIトレンド朝刊 note用のHTML変換 ver2.1 (2026-11-23) 月〜土の短い note に対応（「## 今日やること」の段落は引用の枠、目次は週1まとめだけ）。ver2.0 (2026-11-23) 見やすさのための装飾（太字・ラベル・引用の「やること」・区切り線・番号つきリスト・チェック欄・出典の名前つきリンク）と、表の画像の置き場所に対応。下書きの本文を、noteのエディタに貼るHTMLにする
 # 使い方: python3 tools/note_html.py --date YYYY-MM-DD --repo <リポジトリのdir> [--out note_payload.json]
 #   出力（JSON）: {"title": 記事タイトル, "html": 本文のHTML, "blocks": ブロックの並び（照合用）,
 #                  "paste_html": noteに貼るHTML（目次・図・表・リンクカードを入れる場所に［目次］［図fig1］［表t1］［カード:URL］の段落を置いたもの。POSTS_GUIDE.md 7-2）,
@@ -88,6 +88,8 @@ def to_html(body, tables=None):
         elif len(lines) == 1 and URL_ONLY.match(first):
             u = html.escape(first)
             add(f'<p><a href="{u}">{u}</a></p>', "P", first)
+        elif sec.startswith("今日やること") and not first.startswith(("・", "やること：")):  # 短い note の「今日やること」は引用の枠
+            add("<blockquote><p>" + "<br>".join(inline(l) for l in lines) + "</p></blockquote>", "BLOCKQUOTE", plain(first))
         elif len(lines) == 1 and first.startswith("やること："):
             add(f"<blockquote><p><strong>やること</strong><br>{inline(first[len('やること：'):])}</p></blockquote>", "BLOCKQUOTE", "やること" + plain(first[len('やること：'):]))
         elif len(lines) == 1 and first.startswith(LABELS):
@@ -118,7 +120,7 @@ if __name__ == "__main__":
         tag = "<h2>" + html.escape(str(f.get("after", ""))[3:]) + "</h2>"
         if tag in ph:
             ph = ph.replace(tag, tag + f"<p>［図{f.get('id')}］</p>", 1)
-    if "</ul>" in ph:  # 30秒まとめの箇条書きの直後に目次
+    if P.get("kind") == "weekly" and "</ul>" in ph:  # 週1まとめだけ、30秒まとめの箇条書きの直後に目次
         i = ph.index("</ul>") + 5
         ph = ph[:i] + "<p>［目次］</p>" + ph[i:]
     ph = re.sub(r'<p><a href="([^"]+)">\1</a></p>', lambda m: f"<p>［カード:{html.unescape(m.group(1))}］</p>", ph)
