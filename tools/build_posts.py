@@ -1,8 +1,9 @@
-# AIトレンド朝刊 投稿下書きの組み立て ver2.1 (2026-11-18) 公開前の有料noteの予告（pending_line）に対応。ver2.0 (2026-11-17) note は日曜の週1まとめ（kind=weekly）だけにし、ほかの日は X だけ（kind=daily）。有料noteの案内（data/promo.json）に対応
+# AIトレンド朝刊 投稿下書きの組み立て ver2.2 (2026-11-23) 日曜に出せなかった週1まとめを翌日以降に出す --makeup を追加。ver2.1 (2026-11-18) 公開前の有料noteの予告（pending_line）に対応。ver2.0 (2026-11-17) note は日曜の週1まとめ（kind=weekly）だけにし、ほかの日は X だけ（kind=daily）。有料noteの案内（data/promo.json）に対応
 # 書き方の決まりは tools/POSTS_GUIDE.md。
 # 使い方:
 #   python3 tools/build_posts.py --posts posts.json --date YYYY-MM-DD --repo <リポジトリのdir> [--dry-run] [--any-day]
 #   --dry-run は検査だけして書き込まない。--any-day は日曜以外でも週1まとめを検査できるようにする（試運転用。書き込みはしない）
+#   --makeup は、日曜に出せなかった週1まとめを月曜以降に出すときに使う（日曜以外でも kind weekly を書き込める。週は D の6日前〜D）
 # posts.json（毎日。月〜土は note を書かない）:
 #   {"kind": "daily",
 #    "main": "今日の1本の話題ID", "others": ["ほか3本の話題ID", ...],
@@ -127,6 +128,7 @@ def main():
     ap.add_argument("--repo", required=True)
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--any-day", action="store_true")
+    ap.add_argument("--makeup", action="store_true")
     a = ap.parse_args()
     if a.any_day:
         a.dry_run = True
@@ -143,7 +145,7 @@ def main():
     errs = []
     if kind not in ("daily", "weekly"):
         errs.append(f"kind は daily か weekly（いまは {kind}）")
-    if kind == "weekly" and not sunday and not a.any_day:
+    if kind == "weekly" and not sunday and not a.any_day and not a.makeup:
         errs.append("週1まとめ（weekly）は日曜だけ。月〜土は kind を daily にし、note を書かない")
     if kind == "daily" and P.get("note"):
         errs.append("月〜土は note を書かない（note は日曜の週1まとめだけ）")
