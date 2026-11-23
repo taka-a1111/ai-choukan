@@ -1,4 +1,4 @@
-// AIトレンド朝刊 ブラウザ用の補助関数 ver1.1 (2026-11-12) ChatGPT で画像を作り、クリップボード経由で note・X に渡す。見出し画像の左下にロゴと社名を入れる（__brand）
+// AIトレンド朝刊 ブラウザ用の補助関数 ver1.2 (2026-11-23) note の週1まとめの飾り（目次・リンクカード・表の画像）を入れる __ph・__menu・__caretEmptyAboveImage を追加し、__capture の input を find で見つけられるようにした。ver1.1 (2026-11-12) ChatGPT で画像を作り、クリップボード経由で note・X に渡す。見出し画像の左下にロゴと社名を入れる（__brand）
 // 使い方：ページを開くたびに、該当する部分（=== CHATGPT === か === TARGET ===）を javascript_tool でそのまま実行して定義する。
 // 流れ（ダウンロードフォルダやコンテナを通さない。画像のデータは Claude の会話に入らない）：
 //   1. ChatGPT のタブ：__send(指示文) → __state() で完成を待つ → __copy() で最後の画像をクリップボードへ
@@ -64,7 +64,7 @@ window.__fit = async (file, W, H, name) => { // 外側の背景色の余白を�
 window.__capture = () => { // ファイル選択の input を、開かずに捕まえる（次に押すボタンが作る input が window.__captured に入る）
   window.__captured = null;
   if (!window.__patched) { window.__patched = 1; const oc = HTMLInputElement.prototype.click;
-    HTMLInputElement.prototype.click = function () { if (this.type === 'file') { window.__captured = this; if (!this.isConnected) { this.style.display = 'none'; document.body.appendChild(this); } return; } return oc.apply(this, arguments); }; }
+    HTMLInputElement.prototype.click = function () { if (this.type === 'file') { window.__captured = this; this.id = '__captured_file'; this.style.cssText = 'position:fixed;left:0;top:0;width:10px;height:10px;opacity:0.01;z-index:2147483647'; if (!this.isConnected) document.body.appendChild(this); return; } return oc.apply(this, arguments); }; }
   return 'OK';
 };
 window.__setFile = async (inp, file) => { // input にファイルを渡して change を起こす。X の投稿画面は input[data-testid="fileInput"] をそのまま使う
@@ -92,6 +92,25 @@ window.__dropEmptyBefore = async (h2text) => { // note：見出しと図の間�
   pm.focus(); const r = document.createRange(); r.setStart(p, 0); r.collapse(true); const s = getSelection(); s.removeAllRanges(); s.addRange(r);
   document.dispatchEvent(new Event('selectionchange')); await __sleep(200); document.execCommand('delete'); await __sleep(300); return 'DROPPED';
 };
+window.__ph = async (label) => { // note：note_html.py の paste_html に置いた［目次］［図fig1］［表t1］［カード:URL］の段落を空にして、そこにカーソルを置く
+  const pm = document.querySelector('.ProseMirror'); const p = [...pm.children].find(e => e.tagName === 'P' && e.textContent.trim() === label);
+  if (!p) return 'NOTFOUND ' + label; p.scrollIntoView({ block: 'center' }); pm.focus();
+  const r = document.createRange(); r.selectNodeContents(p); const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+  document.dispatchEvent(new Event('selectionchange')); await __sleep(300); document.execCommand('delete'); await __sleep(300); return 'OK ' + label;
+};
+window.__menu = async (name) => { // note：左の「＋」メニューから項目を押す（'目次'・'画像'・'埋め込み'・'区切り線' など）
+  document.querySelector('button[aria-label="メニューを開く"]').click(); await __sleep(700);
+  const b = [...document.querySelectorAll('button')].find(x => x.innerText.trim() === name); if (!b) return 'NOMENU ' + name; b.click(); await __sleep(800); return 'CLICKED ' + name;
+};
+window.__caretEmptyAboveImage = () => { // note：画像の直前に残った空の段落に（下から順に）カーソルを置く。続けて computer の key "BackSpace" で消す。'none' になるまで繰り返す
+  const pm = document.querySelector('.ProseMirror'); const k = [...pm.children];
+  for (let i = k.length - 1; i >= 0; i--) { const e = k[i], n = k[i + 1];
+    if (e.tagName === 'P' && !e.textContent.trim() && !e.querySelector('img,iframe,a') && n && n.tagName === 'FIGURE' && n.querySelector('img')) {
+      pm.focus(); const r = document.createRange(); r.setStart(e, 0); r.collapse(true); const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+      document.dispatchEvent(new Event('selectionchange')); return 'caret@' + i; } }
+  return 'none';
+};
+window.__layout = () => [...document.querySelector('.ProseMirror').children].map(e => e.tagName === 'FIGURE' ? (e.querySelector('img') ? 'IMG' : e.querySelector('blockquote') ? 'Q' : 'CARD') : e.tagName === 'TABLE-OF-CONTENTS' ? 'TOC' : e.tagName + (e.tagName === 'P' && !e.textContent.trim() ? '(empty)' : '')).join(','); // 仕上がりの並び（残った［…］が無いことも確かめる）
 window.__order = () => [...document.querySelector('.ProseMirror').children].map(e => e.tagName + (e.tagName === 'H2' ? ':' + e.textContent : '')).join(','); // 並びの確認用
 window.__brand = async (file, name) => { // 見出し画像（1280×670）の左下に、本物のロゴマークと「インフォサクセス」を描き足す
   const bmp = await createImageBitmap(file); const W = bmp.width, H = bmp.height;

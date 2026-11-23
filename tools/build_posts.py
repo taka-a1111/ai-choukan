@@ -1,4 +1,4 @@
-# AIトレンド朝刊 投稿下書きの組み立て ver2.2 (2026-11-23) 日曜に出せなかった週1まとめを翌日以降に出す --makeup を追加。ver2.1 (2026-11-18) 公開前の有料noteの予告（pending_line）に対応。ver2.0 (2026-11-17) note は日曜の週1まとめ（kind=weekly）だけにし、ほかの日は X だけ（kind=daily）。有料noteの案内（data/promo.json）に対応
+# AIトレンド朝刊 投稿下書きの組み立て ver2.3 (2026-11-23) 週1まとめの太字の印 [[ ]] と表（note.tables）に対応。ver2.2 (2026-11-23) 日曜に出せなかった週1まとめを翌日以降に出す --makeup を追加。ver2.1 (2026-11-18) 公開前の有料noteの予告（pending_line）に対応。ver2.0 (2026-11-17) note は日曜の週1まとめ（kind=weekly）だけにし、ほかの日は X だけ（kind=daily）。有料noteの案内（data/promo.json）に対応
 # 書き方の決まりは tools/POSTS_GUIDE.md。
 # 使い方:
 #   python3 tools/build_posts.py --posts posts.json --date YYYY-MM-DD --repo <リポジトリのdir> [--dry-run] [--any-day]
@@ -14,7 +14,8 @@
 #    "ok_numbers": ["本文にあって号の解説にない数字のうち、確かめたうえで通すもの"]}
 # 日曜（週1まとめ）は kind を "weekly" にし、上に加えて:
 #    "week_topics": [{"date": "YYYY-MM-DD", "id": "話題ID"}, ...]（その週の号から4〜6本。ふつうは5本）,
-#    "note": {"title": "記事タイトル", "body": "本文（見出しは行頭に ## 、話題ごとの小見出しは ### ）"},
+#    "note": {"title": "記事タイトル", "body": "本文（見出しは行頭に ## 、話題ごとの小見出しは ### 、太字にする語は [[ ]] で囲む）",
+#             "tables": [表（形は tools/note_tables.py の先頭）。0〜3個]},
 #    "images": {"eyecatch": {...}, "figs": [...2枚まで], "xfig": {...}}
 # 検査（1つでも外れると書き込まずに終わる。終了コード1）:
 #   - 話題IDが号にあること（main・others・x_topics は D の号、week_topics はそれぞれの日の号。週は D の6日前〜D）
@@ -23,7 +24,8 @@
 #   - Xの投稿文が全角140字相当に収まること。月〜土の X には note の話を書かない（その日の note は無い）
 #   - 週1まとめ：決まった見出しがあること、タイトル60字以内、本文2500〜5500字、図は2枚まで、
 #     data/promo.json に URL が入っている有料noteは、その URL が本文にあること。URL が空で pending_line があるものは、その1文が本文にあること
-#   - 太字記号（**）がないこと
+#   - 太字記号（**）がないこと。太字の印 [[ ]] は note の本文だけで、開きと閉じがそろっていること
+#   - 表（note.tables）：形（tools/note_tables.py の check）、置き場所の見出しが本文にあること、数字が選んだ話題の解説にあること
 # 書き込み先: data/posts/YYYY-MM-DD.json（60日より古いものは消す）
 import argparse, json, os, re, sys, unicodedata
 from datetime import datetime, timezone, timedelta
@@ -202,6 +204,8 @@ def main():
         if not (2500 <= len(body) <= 5500):
             errs.append(f"本文が{len(body)}字（2500〜5500字）")
         heads = [l.strip() for l in body.split("\n") if l.startswith("## ")]
+        if body.count("[[") != body.count("]]") or re.search(r"\[\[[^\]]*\[\[", body):
+            errs.append("太字の印 [[ ]] の開きと閉じがそろっていません")
         for h in WEEKLY_HEADS:
             if not any(x.startswith(h) for x in heads):
                 errs.append(f"本文に「{h}」の見出しがありません")
@@ -245,12 +249,30 @@ def main():
             errs.append(f"{name}: 置き場所 {f.get('after')} の見出しが本文にありません")
         img_texts.append((name, " ".join([str(f.get("title", "")), str(f.get("note", ""))] + [str(t) for t in f.get("texts") or []])))
 
+    tables = list(note.get("tables") or [])
+    if kind == "daily" and tables:
+        errs.append("月〜土は note が無いので note.tables を書かない")
+    if len(tables) > 3:
+        errs.append(f"note.tables が{len(tables)}個（3個まで）")
+    if tables:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from note_tables import check as table_check
+        allheads = [l.strip() for l in body.split("\n") if l.startswith("## ") or l.startswith("### ")]
+        for t in tables:
+            errs += table_check(t)
+            if t.get("after") not in allheads:
+                errs.append(f"表 {t.get('id')}: 置き場所 {t.get('after')} の見出しが本文にありません")
+            img_texts.append((f"note.tables.{t.get('id')}", " ".join([str(t.get("title", "")), str(t.get("note", ""))] + [str(c) for r in t.get("rows") or [] for c in r])))
     alltext = ([("note", title + "\n" + body)] if kind == "weekly" else []) + \
         [(f"x[{i}]", str(x.get("text") or "")) for i, x in enumerate(xs)] + img_texts
     ok = set(str(n) for n in (P.get("ok_numbers") or []))
+    for x in load_promo(a.repo) + load_promo(a.repo, pending=True):  # 自社の有料noteの案内文と値段の数字は通す
+        ok |= set(numbers_in(" ".join(str(x.get(k) or "") for k in ("line", "price", "pending_line", "title"))))
     for name, text in alltext:
         if "**" in text:
             errs.append(f"{name}: 太字記号（**）があります")
+        if name != "note" and ("[[" in text or "]]" in text):
+            errs.append(f"{name}: 太字の印 [[ ]] は note の本文だけで使えます")
         for u in URL_RE.findall(text):
             if u.split("?")[0].rstrip("/") not in allowed_urls:
                 errs.append(f"{name}: 号の出典にないURL {u}")
@@ -278,6 +300,8 @@ def main():
         out["week_from"] = (dD - timedelta(days=6)).strftime("%Y-%m-%d")
         out["week_topics"] = week
         out["note"] = {"title": title, "body": body}
+        if tables:
+            out["note"]["tables"] = tables
     if P.get("x_topics"):
         out["x_topics"] = list(P["x_topics"])
     if imgs:
