@@ -1,4 +1,4 @@
-# AIトレンド朝刊 投稿下書きの組み立て ver2.4 (2026-11-23) 月〜土にも短い note（毎朝の1本の解説、kind daily の note）を書く。ver2.3 (2026-11-23) 週1まとめの太字の印 [[ ]] と表（note.tables）に対応。ver2.2 (2026-11-23) 日曜に出せなかった週1まとめを翌日以降に出す --makeup を追加。ver2.1 (2026-11-18) 公開前の有料noteの予告（pending_line）に対応。ver2.0 (2026-11-17) note は日曜の週1まとめ（kind=weekly）だけにし、ほかの日は X だけ（kind=daily）。有料noteの案内（data/promo.json）に対応
+# AIトレンド朝刊 投稿下書きの組み立て ver2.5 (2026-11-26) 短い note の見出しを5つ・冒頭はリード、タイトルを「仕事に起きる変化｜固有名詞と事実」の形に。ver2.4 (2026-11-23) 月〜土にも短い note（毎朝の1本の解説、kind daily の note）を書く。ver2.3 (2026-11-23) 週1まとめの太字の印 [[ ]] と表（note.tables）に対応。ver2.2 (2026-11-23) 日曜に出せなかった週1まとめを翌日以降に出す --makeup を追加。ver2.1 (2026-11-18) 公開前の有料noteの予告（pending_line）に対応。ver2.0 (2026-11-17) note は日曜の週1まとめ（kind=weekly）だけにし、ほかの日は X だけ（kind=daily）。有料noteの案内（data/promo.json）に対応
 # 書き方の決まりは tools/POSTS_GUIDE.md。
 # 使い方:
 #   python3 tools/build_posts.py --posts posts.json --date YYYY-MM-DD --repo <リポジトリのdir> [--dry-run] [--any-day]
@@ -94,7 +94,7 @@ def numbers_in(text):
     return out
 
 
-DAILY_HEADS = ["## ひとことで", "## 何が起きたか", "## いつ・誰が使える", "## 小さな会社への影響", "## 今日やること", "## 出典", "## もっと知りたい方へ"]
+DAILY_HEADS = ["## 何が変わった？", "## いつから・誰が使える？", "## 仕事への影響", "## 今、何をしておくとよい？", "## 出典・関連記事"]  # 2026-11-26 ChatGPT・Gemini の見直しで7つから5つに。冒頭は見出しなしのリード
 WEEKLY_HEADS = ["## 30秒まとめ", "## 今週の5本", "## 今週やること", "## 30秒セルフチェック", "## 出典"]
 
 
@@ -246,6 +246,12 @@ def main():
             errs.append(f"短い note の本文が{len(body)}字（700〜1600字）")
         if body.count("[[") != body.count("]]") or re.search(r"\[\[[^\]]*\[\[", body):
             errs.append("太字の印 [[ ]] の開きと閉じがそろっていません")
+        if body and body.lstrip().startswith("#"):
+            errs.append("短い note は、見出しの前にリード（結論と読者への関係を2〜3文）を置く")
+        if title and ("｜" not in title or not (30 <= len(title) <= 60)):
+            errs.append(f"短い note のタイトルは「仕事に起きる変化（平易な言葉）｜固有名詞と事実」の形で30〜60字（いまは{len(title)}字）")
+        elif title and len(title.split("｜")[0]) > 32:
+            errs.append("短い note のタイトルの前半（｜の前）は32字まで（スマホの一覧で切れないように）")
         for h in DAILY_HEADS if body else []:
             if not any(x.startswith(h) for x in heads):
                 errs.append(f"短い note に「{h}」の見出しがありません")
